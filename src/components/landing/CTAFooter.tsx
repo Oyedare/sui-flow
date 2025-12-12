@@ -1,7 +1,7 @@
 "use client";
 
 import { ConnectButton } from "@mysten/dapp-kit";
-import { Github, Twitter, Disc } from "lucide-react";
+import { Github } from "lucide-react";
 
 export function CTAFooter() {
   return (
@@ -38,9 +38,12 @@ export function CTAFooter() {
                    The privacy-first portfolio tracker for the Sui ecosystem. Built with ❤️ for the community.
                 </p>
                 <div className="flex gap-4">
-                   <a href="#" className="p-2 bg-gray-100 dark:bg-zinc-900 rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white transition-colors"><Twitter size={20} /></a>
-                   <a href="#" className="p-2 bg-gray-100 dark:bg-zinc-900 rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white transition-colors"><Github size={20} /></a>
-                   <a href="#" className="p-2 bg-gray-100 dark:bg-zinc-900 rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white transition-colors"><Disc size={20} /></a>
+                   <a href="https://x.com/_stephentony_" target="_blank" rel="noopener noreferrer" className="p-2 bg-gray-100 dark:bg-zinc-900 rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white transition-colors">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="w-5 h-5 fill-current">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                      </svg>
+                   </a>
+                   <a href="https://github.com/Oyedare/sui-flow" target="_blank" rel="noopener noreferrer" className="p-2 bg-gray-100 dark:bg-zinc-900 rounded-lg text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white transition-colors"><Github size={20} /></a>
                 </div>
              </div>
              

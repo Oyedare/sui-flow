@@ -13,8 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Flow",
-  description: "Privacy-first portfolio tracker for the Sui ecosystem",
+  title: "Flow - Sui Portfolio Tracker",
+  description: "Privacy-first portfolio tracker for the Sui ecosystem. Track assets, DeFi positions, and history.",
+  openGraph: {
+    title: "Flow - Master Your Sui Portfolio",
+    description: "Privacy-first tracking, powerful analytics, and seamless DeFi integration.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Flow - Master Your Sui Portfolio",
+    description: "Privacy-first tracking, powerful analytics, and seamless DeFi integration.",
+  },
 };
 
 import { Providers } from "@/components/Providers";

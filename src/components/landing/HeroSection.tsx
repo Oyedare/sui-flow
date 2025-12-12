@@ -83,9 +83,9 @@ export function HeroSection() {
               </div>
             </div>
             
-            <button className="px-8 py-4 rounded-xl bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white font-medium border border-gray-200 dark:border-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-800 transition-colors flex items-center gap-2">
+            {/* <button className="px-8 py-4 rounded-xl bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-white font-medium border border-gray-200 dark:border-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-800 transition-colors flex items-center gap-2">
               Explore Demo <ArrowRight size={18} />
-            </button>
+            </button> */}
           </div>
         </motion.div>
 
