@@ -63,55 +63,57 @@ export function AssetList({ balances, prices }: AssetListProps) {
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 overflow-hidden">
-      <table className="w-full">
-        <thead className="bg-gray-50 dark:bg-zinc-950/50">
-          <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            <th className="px-6 py-4">Asset</th>
-            <th className="px-6 py-4 text-right">Price</th>
-            <th className="px-6 py-4 text-right">Balance</th>
-            <th className="px-6 py-4 text-right">Value</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-          {items.map((item) => (
-            <tr key={item.coinType} className="hover:bg-gray-50/50 dark:hover:bg-zinc-800/50 transition-colors">
-              <td className="px-6 py-4">
-                <div className="flex items-center gap-3">
-                  {/* Icon Placeholder */}
-                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-bold text-xs">
-                    {item.symbol[0]}
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-gray-100">{item.symbol}</div>
-                    <div className="text-xs text-gray-400 hidden sm:block truncate max-w-[100px]">
-                      {item.coinType.split("::")[0].slice(0, 6)}...
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 dark:bg-zinc-950/50">
+            <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-4">Asset</th>
+              <th className="px-6 py-4 text-right">Price</th>
+              <th className="px-6 py-4 text-right">Balance</th>
+              <th className="px-6 py-4 text-right">Value</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
+            {items.map((item) => (
+              <tr key={item.coinType} className="hover:bg-gray-50/50 dark:hover:bg-zinc-800/50 transition-colors">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    {/* Icon Placeholder */}
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-bold text-xs">
+                      {item.symbol[0]}
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-gray-100">{item.symbol}</div>
+                      <div className="text-xs text-gray-400 hidden sm:block truncate max-w-[100px]">
+                        {item.coinType.split("::")[0].slice(0, 6)}...
+                      </div>
                     </div>
                   </div>
-                </div>
-              </td>
-              <td className="px-6 py-4 text-right tabular-nums">
-                <div className="text-gray-900 dark:text-gray-100">
-                  {formatCurrency(item.price, settings.currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                </div>
-              </td>
-              <td className="px-6 py-4 text-right tabular-nums">
-                <div className="text-gray-900 dark:text-gray-100">
-                  {settings.hideBalances 
-                    ? "••••" 
-                    : item.formattedAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                </div>
-              </td>
-              <td className="px-6 py-4 text-right tabular-nums font-medium">
-                <div className="text-gray-900 dark:text-gray-100">
-                  {settings.hideBalances
-                    ? "••••"
-                    : formatCurrency(item.value, settings.currency)}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </td>
+                <td className="px-6 py-4 text-right tabular-nums">
+                  <div className="text-gray-900 dark:text-gray-100">
+                    {formatCurrency(item.price, settings.currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right tabular-nums">
+                  <div className="text-gray-900 dark:text-gray-100">
+                    {settings.hideBalances 
+                      ? "••••" 
+                      : item.formattedAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right tabular-nums font-medium">
+                  <div className="text-gray-900 dark:text-gray-100">
+                    {settings.hideBalances
+                      ? "••••"
+                      : formatCurrency(item.value, settings.currency)}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
