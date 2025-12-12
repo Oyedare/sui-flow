@@ -2,7 +2,7 @@
 
 import { useTokenBalances } from "@/hooks/useTokenBalances";
 import { useTokenPrices } from "@/hooks/useTokenPrices";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { AssetList } from "./AssetList";
 import { HistoryList } from "./HistoryList";
 import { TaxReport } from "./TaxReport";
@@ -16,14 +16,35 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { formatCurrency } from "@/lib/currency";
 import { useCurrencyRates } from "@/hooks/useCurrencyRates";
 import clsx from "clsx";
+import { Eye, EyeOff } from "lucide-react";
+import { useOnboarding } from "@/hooks/useOnboarding";
 
 type Tab = 'assets' | 'defi' | 'nfts' | 'history' | 'tax' | 'analytics' | 'settings';
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('assets');
   const { balances, isLoading: isBalancesLoading } = useTokenBalances();
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const { data: exchangeRates } = useCurrencyRates();
+  const { startTour, hasSeenOnboarding } = useOnboarding();
+
+  useEffect(() => {
+    if (!hasSeenOnboarding && !isBalancesLoading) {
+        const timer = setTimeout(() => {
+            startTour();
+        }, 1500); // Wait for animations
+        return () => clearTimeout(timer);
+    }
+  }, [hasSeenOnboarding, isBalancesLoading, startTour]);
+
+  // Helper for alpha colors since we can't easily use Tailwind opacity modifiers on CSS vars without RGB format
+  const getAlphaColor = (hex: string, alpha: number) => {
+      // Simple hex to rgba
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
 
   // Split Standard Assets vs DeFi Positions
   const { assets, defiPositions } = useMemo(() => {
@@ -62,102 +83,74 @@ export function Dashboard() {
   if (isBalancesLoading) {
     return (
       <div className="flex justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: settings.accentColor }}></div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
+    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500" id="dashboard-header">
+
       {/* Portfolio Summary Card */}
-      <div className="p-8 rounded-3xl bg-gradient-to-br from-blue-600/10 to-teal-400/10 border border-blue-500/20 backdrop-blur-sm">
-        <h2 className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-wider mb-2">
-          Total Net Worth
-        </h2>
-        <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">
-             {formatCurrency(totalValue, settings.currency, { exchangeRates })}
+      <div 
+        id="net-worth-card"
+        className="p-8 rounded-3xl backdrop-blur-sm border"
+        style={{
+            background: `linear-gradient(135deg, ${getAlphaColor(settings.accentColor, 0.1)}, ${getAlphaColor(settings.accentColor, 0.05)})`,
+            borderColor: getAlphaColor(settings.accentColor, 0.2)
+        }}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-wider">
+            Total Net Worth
+          </h2>
+          <button 
+            onClick={() => updateSettings({ hideBalances: !settings.hideBalances })}
+            className="text-gray-400 transition-colors hover:opacity-80"
+            style={{ color: settings.hideBalances ? undefined : undefined }}
+          >
+            {settings.hideBalances ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        <div 
+            className="text-4xl font-bold bg-clip-text text-transparent"
+            style={{ backgroundImage: `linear-gradient(to right, ${settings.accentColor}, #2dd4bf)` }}
+        >
+             {settings.hideBalances 
+               ? "••••••••" 
+               : formatCurrency(totalValue, settings.currency, { exchangeRates })}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 p-1 bg-gray-100 dark:bg-zinc-900/50 rounded-full w-fit">
-        <button
-          onClick={() => setActiveTab('assets')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'assets' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          Assets
-        </button>
-        <button
-          onClick={() => setActiveTab('defi')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm flex items-center gap-2",
-            activeTab === 'defi' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          DeFi <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 px-1.5 rounded-full">{defiPositions.length}</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('nfts')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'nfts' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          NFTs
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'history' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          History
-        </button>
-        <button
-          onClick={() => setActiveTab('tax')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'tax' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          Tax Report
-        </button>
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'analytics' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          Analytics
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={clsx(
-            "px-4 py-2 rounded-full font-medium transition-all text-sm",
-            activeTab === 'settings' 
-              ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" 
-              : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
-          )}
-        >
-          Settings
-        </button>
+      <div id="dashboard-tabs" className="flex gap-2 p-1 bg-gray-100 dark:bg-zinc-900/50 rounded-full w-fit overflow-x-auto max-w-full">
+        {(['assets', 'defi', 'nfts', 'history', 'tax', 'analytics', 'settings'] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              id={tab === 'settings' ? 'settings-tab-btn' : undefined}
+              onClick={() => setActiveTab(tab)}
+              className={clsx(
+                "px-4 py-2 rounded-full font-medium transition-all text-sm whitespace-nowrap flex items-center gap-2",
+                activeTab === tab 
+                  ? "bg-white dark:bg-zinc-800 shadow-sm" 
+                  : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
+              )}
+              style={activeTab === tab ? { color: settings.accentColor } : {}}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'defi' && (
+                  <span 
+                    className="text-[10px] px-1.5 rounded-full"
+                    style={{ 
+                        backgroundColor: getAlphaColor(settings.accentColor, 0.1),
+                        color: settings.accentColor 
+                    }}
+                  >
+                      {defiPositions.length}
+                  </span>
+              )}
+            </button>
+        ))}
       </div>
 
       {/* Content */}

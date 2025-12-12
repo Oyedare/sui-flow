@@ -4,6 +4,8 @@ import { useState } from "react";
 import { CloudUpload, Lock, CheckCircle2, Copy } from "lucide-react";
 import { TaxReport } from "@/lib/taxEngine";
 
+import { useNotifications } from "@/contexts/NotificationContext";
+
 interface WalrusBackupProps {
   report: TaxReport;
 }
@@ -11,6 +13,7 @@ interface WalrusBackupProps {
 export function WalrusBackup({ report }: WalrusBackupProps) {
   const [status, setStatus] = useState<'idle' | 'encrypting' | 'uploading' | 'success'>('idle');
   const [blobId, setBlobId] = useState<string | null>(null);
+  const { addNotification } = useNotifications();
 
   const handleBackup = async () => {
     setStatus('encrypting');
@@ -27,15 +30,20 @@ export function WalrusBackup({ report }: WalrusBackupProps) {
       
       setBlobId(blobId);
       setStatus('success');
+      addNotification("success", "Backup saved to Walrus!", "Saved");
     } catch (error) {
       console.error('Walrus backup failed:', error);
       alert('Failed to backup to Walrus. Please try again.');
       setStatus('idle');
+      addNotification("error", "Failed to backup to Walrus", "Error");
     }
   };
 
   const copyBlobId = () => {
-    if (blobId) navigator.clipboard.writeText(blobId);
+    if (blobId) {
+      navigator.clipboard.writeText(blobId);
+      addNotification("success", "Blob ID copied to clipboard", "Copied");
+    }
   };
 
   if (status === 'success' && blobId) {

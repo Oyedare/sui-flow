@@ -6,14 +6,17 @@ import { storeBlob } from "./walrus";
 /**
  * Fetch image from URL and convert to base64 using img element (CORS-friendly)
  */
-async function fetchImageAsBase64(imageUrl: string): Promise<string> {
+/**
+ * Fetch image from URL and convert to Blob (CORS-friendly)
+ */
+async function fetchImageAsBlob(imageUrl: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous"; // Request CORS headers
     
     img.onload = () => {
       try {
-        // Create canvas to convert image to base64
+        // Create canvas to convert image to Blob
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
@@ -26,11 +29,14 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string> {
         
         ctx.drawImage(img, 0, 0);
         
-        // Get base64 data (remove data URL prefix)
-        const dataUrl = canvas.toDataURL('image/png');
-        const base64 = dataUrl.split(',')[1];
-        
-        resolve(base64);
+        // Convert to Blob
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to convert canvas to blob'));
+          }
+        }, 'image/png');
       } catch (error) {
         reject(error);
       }
@@ -41,8 +47,7 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string> {
     };
     
     // Start loading
-    // Use proxy to bypass CORS
-    img.src = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+    img.src = imageUrl;
   });
 }
 
@@ -62,11 +67,11 @@ export async function cacheNFTImage(imageUrl: string): Promise<string> {
       throw new Error("Image already on Walrus");
     }
     
-    // Fetch image as base64
-    const base64Image = await fetchImageAsBase64(imageUrl);
+    // Fetch image as Blob
+    const imageBlob = await fetchImageAsBlob(imageUrl);
     
     // Store on Walrus (without encryption for images)
-    const blobId = await storeBlob(base64Image, false);
+    const blobId = await storeBlob(imageBlob, false);
     
     return blobId;
   } catch (error) {

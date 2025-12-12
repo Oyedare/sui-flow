@@ -165,6 +165,220 @@ export class TaxEngine {
     };
   }
 
+  static async calculateLIFO(
+    transactions: SuiTransactionBlockResponse[], 
+    priceProvider: (coinType: string, timestampMs: number) => Promise<number>,
+    onProgress?: (processed: number, total: number) => void
+  ): Promise<TaxReport> {
+    // 1. Sort transactions ascending (Oldest first) for processing, but inventory management differs
+    const sortedTx = [...transactions].sort((a, b) => {
+      return Number(a.timestampMs) - Number(b.timestampMs);
+    });
+
+    const inventory: Inventory = {};
+    const events: TaxEvent[] = [];
+    let totalRealizedGain = 0;
+    let totalRealizedLoss = 0;
+
+    let processedCount = 0;
+    const totalCount = sortedTx.length;
+
+    for (const tx of sortedTx) {
+      processedCount++;
+      if (onProgress) onProgress(processedCount, totalCount);
+
+      if (!tx.balanceChanges) continue;
+      const date = new Date(Number(tx.timestampMs)).toLocaleDateString();
+      const timestamp = Number(tx.timestampMs);
+
+      for (const change of tx.balanceChanges) {
+        const coinType = change.coinType;
+        const decimals = getDecimals(coinType);
+        const rawAmount = parseInt(change.amount);
+        const amount = Math.abs(formatBalance(rawAmount, decimals));
+        
+        if (amount < 0.000001) continue;
+
+        const price = await priceProvider(coinType, timestamp);
+        await new Promise(r => setTimeout(r, 20)); // Faster delay
+
+        if (rawAmount > 0) {
+          // BUY
+          if (!inventory[coinType]) inventory[coinType] = [];
+          inventory[coinType].push({
+            amount: amount,
+            costBasisPerUnit: price
+          });
+
+          events.push({
+            date,
+            type: 'BUY',
+            asset: coinType.split('::').pop() || 'UNK',
+            amount,
+            price,
+            totalValue: amount * price
+          });
+
+        } else if (rawAmount < 0) {
+          // SELL (LIFO: Take from end of array)
+          let remainingToSell = amount;
+          let realizedPnL = 0;
+          let costBasisTotal = 0;
+
+          if (!inventory[coinType]) inventory[coinType] = [];
+          const stack = inventory[coinType]; // Stack for LIFO
+
+          while (remainingToSell > 0 && stack.length > 0) {
+            const newest = stack[stack.length - 1]; // Look at last item
+            
+            if (newest.amount <= remainingToSell) {
+              const soldAmount = newest.amount;
+              const cost = soldAmount * newest.costBasisPerUnit;
+              const proceed = soldAmount * price;
+              
+              realizedPnL += (proceed - cost);
+              costBasisTotal += cost;
+              remainingToSell -= soldAmount;
+              stack.pop(); // Remove fully used batch
+            } else {
+              const soldAmount = remainingToSell;
+              const cost = soldAmount * newest.costBasisPerUnit;
+              const proceed = soldAmount * price;
+              
+              realizedPnL += (proceed - cost);
+              costBasisTotal += cost;
+              newest.amount -= remainingToSell;
+              remainingToSell = 0;
+            }
+          }
+
+          if (remainingToSell > 0) {
+             const cost = 0;
+             const proceed = remainingToSell * price;
+             realizedPnL += (proceed - cost);
+             costBasisTotal += cost; 
+          }
+
+          if (realizedPnL > 0) totalRealizedGain += realizedPnL;
+          else totalRealizedLoss += Math.abs(realizedPnL);
+
+          events.push({
+            date,
+            type: 'SELL',
+            asset: coinType.split('::').pop() || 'UNK',
+            amount: amount,
+            price,
+            totalValue: amount * price,
+            costBasis: costBasisTotal,
+            gainLoss: realizedPnL
+          });
+        }
+      }
+    }
+
+    return {
+      totalRealizedGain,
+      totalRealizedLoss,
+      events
+    };
+  }
+
+  static async calculateAverage(
+    transactions: SuiTransactionBlockResponse[], 
+    priceProvider: (coinType: string, timestampMs: number) => Promise<number>,
+    onProgress?: (processed: number, total: number) => void
+  ): Promise<TaxReport> {
+    const sortedTx = [...transactions].sort((a, b) => Number(a.timestampMs) - Number(b.timestampMs));
+    
+    // Map: CoinType -> { totalAmount, totalCost }
+    const inventory: Record<string, { totalAmount: number, totalCost: number }> = {};
+    const events: TaxEvent[] = [];
+    let totalRealizedGain = 0;
+    let totalRealizedLoss = 0;
+
+    let processedCount = 0;
+    const totalCount = sortedTx.length;
+
+    for (const tx of sortedTx) {
+      processedCount++;
+      if (onProgress) onProgress(processedCount, totalCount);
+
+      if (!tx.balanceChanges) continue;
+      const date = new Date(Number(tx.timestampMs)).toLocaleDateString();
+      const timestamp = Number(tx.timestampMs);
+
+      for (const change of tx.balanceChanges) {
+        const coinType = change.coinType;
+        const decimals = getDecimals(coinType);
+        const rawAmount = parseInt(change.amount);
+        const amount = Math.abs(formatBalance(rawAmount, decimals));
+        
+        if (amount < 0.000001) continue;
+
+        const price = await priceProvider(coinType, timestamp);
+        await new Promise(r => setTimeout(r, 20));
+
+        if (!inventory[coinType]) inventory[coinType] = { totalAmount: 0, totalCost: 0 };
+        const pool = inventory[coinType];
+
+        if (rawAmount > 0) {
+          // BUY - Add to pool
+          pool.totalAmount += amount;
+          pool.totalCost += (amount * price);
+
+          events.push({
+            date,
+            type: 'BUY',
+            asset: coinType.split('::').pop() || 'UNK',
+            amount,
+            price,
+            totalValue: amount * price
+          });
+
+        } else if (rawAmount < 0) {
+          // SELL - Use Average Cost
+          const avgCostPerUnit = pool.totalAmount > 0 ? pool.totalCost / pool.totalAmount : 0;
+          
+          let cost = amount * avgCostPerUnit;
+          // Reduce pool
+          if (pool.totalAmount >= amount) {
+             pool.totalCost -= cost;
+             pool.totalAmount -= amount;
+          } else {
+             // Selling more than tracked (missing data), assume remaining has 0 cost or same avg?
+             // Usually cap cost reduction to what's in pool
+             cost = pool.totalCost + (amount - pool.totalAmount) * 0; // remaining part 0 cost
+             pool.totalCost = 0;
+             pool.totalAmount = 0;
+          }
+
+          const proceed = amount * price;
+          const realizedPnL = proceed - cost;
+
+          if (realizedPnL > 0) totalRealizedGain += realizedPnL;
+          else totalRealizedLoss += Math.abs(realizedPnL);
+
+          events.push({
+            date,
+            type: 'SELL',
+            asset: coinType.split('::').pop() || 'UNK',
+            amount: amount,
+            price,
+            totalValue: amount * price,
+            costBasis: cost,
+            gainLoss: realizedPnL
+          });
+        }
+      }
+    }
+
+    return {
+      totalRealizedGain,
+      totalRealizedLoss,
+      events
+    };
+  }
+
   /*
    * Calculates Progressive Tax Liability based on Nigeria Tax Act 2025
    * Bands:

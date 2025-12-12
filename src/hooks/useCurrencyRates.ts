@@ -83,12 +83,14 @@ export function useCurrencyRates() {
           const actualPrice = price * Math.pow(10, expo);
 
           if (priceData.id === PRICE_FEED_IDS.EUR_USD) {
-            rates.EUR = actualPrice;
+            // Feed is EUR/USD ($1.08), we want USD -> EUR (0.92)
+            rates.EUR = 1 / actualPrice;
           } else if (priceData.id === PRICE_FEED_IDS.GBP_USD) {
-            rates.GBP = actualPrice;
+            // Feed is GBP/USD ($1.27), we want USD -> GBP (0.79)
+            rates.GBP = 1 / actualPrice;
           } else if (priceData.id === PRICE_FEED_IDS.USD_JPY) {
-            // USD/JPY is inverted, we need JPY/USD
-            rates.JPY = 1 / actualPrice;
+            // Feed is USD/JPY (149), we want USD -> JPY (149)
+            rates.JPY = actualPrice;
           }
         });
 

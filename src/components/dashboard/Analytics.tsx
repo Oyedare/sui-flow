@@ -3,13 +3,18 @@
 import { useMemo, useState, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { PieChart, Pie, Cell, Legend } from "recharts";
-import { TrendingUp, TrendingDown, PieChartIcon, Activity, AlertCircle, Download } from "lucide-react";
+import { TrendingUp, TrendingDown, PieChartIcon, Activity, AlertCircle, Download, ArrowRightLeft } from "lucide-react";
 import { usePortfolioHistory, getHistoryForPeriod, calculatePerformance } from "@/hooks/usePortfolioHistory";
 import { formatCurrency } from "@/lib/currency";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useCurrencyRates } from "@/hooks/useCurrencyRates";
 import { domToPng } from "modern-screenshot";
 import clsx from "clsx";
+import { InfoTooltip } from "../ui/InfoTooltip";
+import { useCashFlowHistory } from "@/hooks/useCashFlowHistory";
+import { calculateCashFlow } from "@/lib/cashFlowProcessor";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import { BarChart, Bar } from "recharts";
 
 interface AnalyticsProps {
   totalValue: number;
@@ -65,13 +70,25 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
     return calculatePerformance(periodHistory);
   }, [periodHistory]);
 
-  // Prepare chart data
   const chartData = useMemo(() => {
     return periodHistory.map((snapshot) => ({
       date: new Date(snapshot.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       value: snapshot.totalValue,
     }));
   }, [periodHistory]);
+
+  // Cash Flow Data
+  const account = useCurrentAccount();
+  const { data: rawTransactions } = useCashFlowHistory();
+  const cashFlowData = useMemo(() => {
+    if (!rawTransactions || !prices) return [];
+    // Filter by period? For now just show all fetched (which is recent 50+50)
+    // To match periods accurately we'd need more history, but let's just show what we have.
+    const allProcessed = calculateCashFlow(rawTransactions, prices, account?.address);
+    // Slice to last 14 days or so to keep custom chart clean if needed
+    return allProcessed.slice(-14); 
+  }, [rawTransactions, prices, account]);
+  const cashFlowRef = useRef<HTMLDivElement>(null);
 
   // Calculate asset allocation
   const allocationData = useMemo(() => {
@@ -168,6 +185,7 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm mb-2">
             <Activity size={16} />
             <span>Portfolio Change</span>
+            <InfoTooltip content="This is the change in value of your portfolio over the selected time period." />
           </div>
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
             {formatCurrency(Math.abs(performance.change), settings.currency, { exchangeRates })}
@@ -192,6 +210,7 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm mb-2">
             <PieChartIcon size={16} />
             <span>Top Asset</span>
+            <InfoTooltip content="This is the asset that makes up the largest percentage of your portfolio." />
           </div>
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
             {allocationData[0]?.name || "N/A"}
@@ -212,6 +231,7 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm mb-2">
             <AlertCircle size={16} />
             <span>Risk Level</span>
+            <InfoTooltip content="This is the risk level of your portfolio based on the volatility of your assets." />
           </div>
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
             {riskMetrics.volatility}
@@ -225,7 +245,10 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
       {/* Performance Chart */}
       <div ref={performanceChartRef} className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Portfolio Performance</h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Portfolio Performance</h3>
+            <InfoTooltip content="This is the change in value of your portfolio over the selected time period." />
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => downloadCardAsImage(performanceChartRef.current, `portfolio-performance-${timePeriod}`)}
@@ -242,9 +265,10 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
                   className={clsx(
                     "px-3 py-1 rounded-lg text-sm font-medium transition-all",
                     timePeriod === period
-                      ? "bg-blue-600 text-white"
+                      ? "text-white shadow-md"
                       : "bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700"
                   )}
+                  style={timePeriod === period ? { backgroundColor: settings.accentColor } : {}}
                 >
                   {period.toUpperCase()}
                 </button>
@@ -280,7 +304,7 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
               <Line 
                 type="monotone" 
                 dataKey="value" 
-                stroke="#3b82f6" 
+                stroke={settings.accentColor} 
                 strokeWidth={2}
                 dot={false}
               />
@@ -297,10 +321,71 @@ export function Analytics({ totalValue, assets, prices }: AnalyticsProps) {
         )}
       </div>
 
+      {/* Cash Flow Chart */}
+      <div ref={cashFlowRef} className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Cash Flow (Last 14 Days)</h3>
+            <InfoTooltip content="Money In (Green) vs Money Out (Red) based on transaction history and current prices." />
+          </div>
+          <button
+            onClick={() => downloadCardAsImage(cashFlowRef.current, "cash-flow")}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            title="Download as image"
+          >
+            <Download size={18} className="text-gray-600 dark:text-gray-400" />
+          </button>
+        </div>
+
+        {cashFlowData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={cashFlowData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
+              <XAxis 
+                dataKey="date" 
+                stroke="#9ca3af"
+                style={{ fontSize: "12px" }}
+              />
+              <YAxis 
+                stroke="#9ca3af"
+                style={{ fontSize: "12px" }}
+                tickFormatter={(value) => `$${(value).toLocaleString()}`}
+              />
+              <Tooltip 
+                contentStyle={{
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
+                  color: "#111827",
+                  padding: "8px 12px",
+                }}
+                formatter={(value: number, name: string) => [
+                  formatCurrency(value, settings.currency, { exchangeRates }),
+                  name === "in" ? "In (+)" : "Out (-)"
+                ]}
+              />
+              <Legend />
+              <Bar dataKey="in" name="in" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="out" name="out" fill="#ef4444" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[300px] flex items-center justify-center text-gray-500 dark:text-gray-400">
+             <div className="text-center">
+              <ArrowRightLeft size={48} className="mx-auto mb-4 opacity-50" />
+              <p>No recent cash flow data</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Asset Allocation */}
       <div ref={allocationChartRef} className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
         <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Asset Allocation</h3>
+          <InfoTooltip content="This is the allocation of your portfolio across different asset classes." />
+          </div>
           <button
             onClick={() => downloadCardAsImage(allocationChartRef.current, "asset-allocation")}
             className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"

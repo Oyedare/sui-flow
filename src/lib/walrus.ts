@@ -106,10 +106,17 @@ async function decryptData(encryptedBase64: string, password: string = 'sui-flow
 /**
  * Store data to Walrus and return blob ID
  */
-export async function storeBlob(data: string, encrypt: boolean = true): Promise<string> {
+export async function storeBlob(data: string | Blob, encrypt: boolean = true): Promise<string> {
   try {
-    // Encrypt data if requested
-    const payload = encrypt ? await encryptData(data) : data;
+    // Encrypt data if requested (must be string)
+    let payload: string | Blob = data;
+    
+    if (encrypt) {
+      if (typeof data !== 'string') {
+        throw new Error('Encryption only supported for string data');
+      }
+      payload = await encryptData(data);
+    }
     
     // Upload to Walrus publisher with epochs parameter (5 epochs = ~5 days on testnet)
     const response = await fetch(`${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=5`, {

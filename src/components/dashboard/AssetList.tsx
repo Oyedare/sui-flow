@@ -96,12 +96,16 @@ export function AssetList({ balances, prices }: AssetListProps) {
               </td>
               <td className="px-6 py-4 text-right tabular-nums">
                 <div className="text-gray-900 dark:text-gray-100">
-                  {item.formattedAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                  {settings.hideBalances 
+                    ? "••••" 
+                    : item.formattedAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </div>
               </td>
               <td className="px-6 py-4 text-right tabular-nums font-medium">
                 <div className="text-gray-900 dark:text-gray-100">
-                  {formatCurrency(item.value, settings.currency)}
+                  {settings.hideBalances
+                    ? "••••"
+                    : formatCurrency(item.value, settings.currency)}
                 </div>
               </td>
             </tr>

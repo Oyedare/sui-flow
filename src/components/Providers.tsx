@@ -5,6 +5,9 @@ import { getFullnodeUrl } from "@mysten/sui.js/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { TransactionMetadataProvider } from "@/contexts/TransactionMetadataContext";
+
+// ...
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import "@mysten/dapp-kit/dist/index.css";
 
@@ -37,10 +40,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <SuiClientProvider networks={networks} defaultNetwork={network}>
         <WalletProvider autoConnect>
           <SettingsProvider>
-            <NotificationProvider>
-              {children}
-              <ToastContainer />
-            </NotificationProvider>
+            <TransactionMetadataProvider>
+              <NotificationProvider>
+                {children}
+                <ToastContainer />
+              </NotificationProvider>
+            </TransactionMetadataProvider>
           </SettingsProvider>
         </WalletProvider>
       </SuiClientProvider>

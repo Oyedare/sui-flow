@@ -7,10 +7,14 @@ import { TaxEngine, TaxReport as TaxReportType } from "@/lib/taxEngine";
 import { Download, FileText, Shield, CloudDownload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { WalrusBackup } from "./WalrusBackup";
+import { useSettings } from "@/contexts/SettingsContext";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function TaxReport() {
   const { data: history, isLoading: isHistoryLoading } = useTransactionHistory();
   const { balances } = useTokenBalances(); 
+  const { settings } = useSettings();
+  const queryClient = useQueryClient();
   
   const coinTypes = useMemo(() => balances.map(b => b.coinType), [balances]);
   const { data: prices } = useTokenPrices(coinTypes);
@@ -59,16 +63,49 @@ export function TaxReport() {
 
     try {
       // Dynamic import to avoid SSR issues if any, ensuring client-side
-      const { getHistoricalPrice } = await import("@/lib/pythBenchmarks");
+      const { getHistoricalPrice: fetchHistoricalPrice } = await import("@/lib/pythBenchmarks");
+      let reportData: TaxReportType;
       
-      const result = await TaxEngine.calculateFIFO(
-        history.data as any[], 
-        getHistoricalPrice,
-        (processed, total) => {
-          setProgress({ processed, total });
-        }
-      );
-      setReport(result);
+      switch (settings.taxMethod) {
+        case "LIFO":
+          reportData = await TaxEngine.calculateLIFO(history.data as any[], async (coinType, timestamp) => {
+             const prices = await queryClient.fetchQuery({
+                queryKey: ["historical-price", coinType, timestamp],
+                queryFn: () => fetchHistoricalPrice(coinType, timestamp)
+             });
+             return prices || 0;
+          }, (processed, total) => {
+            setProgress({ processed, total });
+          });
+          break;
+          
+        case "Average":
+          reportData = await TaxEngine.calculateAverage(history.data as any[], async (coinType, timestamp) => {
+             const prices = await queryClient.fetchQuery({
+                queryKey: ["historical-price", coinType, timestamp],
+                queryFn: () => fetchHistoricalPrice(coinType, timestamp)
+             });
+             return prices || 0;
+          }, (processed, total) => {
+             setProgress({ processed, total });
+          });
+          break;
+          
+        case "FIFO":
+        default:
+          reportData = await TaxEngine.calculateFIFO(history.data as any[], async (coinType, timestamp) => {
+             const prices = await queryClient.fetchQuery({
+                queryKey: ["historical-price", coinType, timestamp],
+                queryFn: () => fetchHistoricalPrice(coinType, timestamp)
+             });
+             return prices || 0;
+          }, (processed, total) => {
+             setProgress({ processed, total });
+          });
+          break;
+      }
+      
+      setReport(reportData);
     } catch (error) {
       console.error("Tax generation failed:", error);
       alert("Failed to generate report. See console for details.");
@@ -96,16 +133,29 @@ export function TaxReport() {
     link.click();
     document.body.removeChild(link);
   };
+  
+  const getAlphaColor = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
       {/* Privacy Badge */}
-      <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
-        <Shield className="text-blue-600 dark:text-blue-400" size={24} />
+      <div 
+        className="flex items-center gap-2 p-4 rounded-xl border"
+        style={{ 
+            backgroundColor: getAlphaColor(settings.accentColor, 0.05),
+            borderColor: getAlphaColor(settings.accentColor, 0.2)
+        }}
+      >
+        <Shield size={24} style={{ color: settings.accentColor }} />
         <div>
-          <h3 className="font-semibold text-blue-900 dark:text-blue-100">Privacy-First Engine</h3>
-          <p className="text-xs text-blue-700 dark:text-blue-300">
+          <h3 className="font-semibold" style={{ color: settings.accentColor }}>Privacy-First Engine</h3>
+          <p className="text-xs opacity-80" style={{ color: settings.accentColor }}>
             All calculations run locally on your device via Nautilus. Your financial data is never sent to our servers.
           </p>
         </div>
@@ -121,7 +171,11 @@ export function TaxReport() {
             <button
               onClick={handleGenerate}
               disabled={isGenerating || isHistoryLoading}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-medium transition-all shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-3 text-white rounded-full font-medium transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 hover:opacity-90"
+              style={{ 
+                  backgroundColor: settings.accentColor,
+                  boxShadow: `0 10px 15px -3px ${getAlphaColor(settings.accentColor, 0.25)}`
+              }}
             >
               {isGenerating 
                 ? `Processing ${progress.processed}/${history?.data.length || '...'}` 
@@ -137,7 +191,8 @@ export function TaxReport() {
                    value={restoreInput}
                    onChange={(e) => setRestoreInput(e.target.value)}
                    placeholder="Paste Blob ID..."
-                   className="flex-1 px-3 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                   className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2"
+                   style={{ '--tw-ring-color': getAlphaColor(settings.accentColor, 0.5) } as any}
                  />
                  <button
                    onClick={handleRestore}
@@ -156,7 +211,8 @@ export function TaxReport() {
       ) : (
         <div className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* ... (keep existing summary cards) ... */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="p-6 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-2xl">
               <div className="text-sm text-green-700 dark:text-green-300 uppercase font-medium">Realized Gains</div>
               <div className="text-3xl font-bold text-green-700 dark:text-green-400">
@@ -183,12 +239,14 @@ export function TaxReport() {
                     type="number" 
                     value={exchangeRate} 
                     onChange={(e) => setExchangeRate(Number(e.target.value))}
-                    className="w-24 px-2 py-1 border border-gray-200 dark:border-zinc-700 rounded-md bg-transparent text-sm"
+                    className="w-24 px-2 py-1 border border-gray-200 dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2"
+                    style={{ '--tw-ring-color': getAlphaColor(settings.accentColor, 0.5) } as any}
                   />
                 </div>
              </div>
              
-             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+             {/* ... (rest of estimator) ... */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                 <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl">
                    <div className="text-xs text-gray-500 mb-1">Effective Rate</div>
                    <div className="text-2xl font-bold text-gray-900 dark:text-white">

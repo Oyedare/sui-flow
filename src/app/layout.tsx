@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sui Flow",
+  title: "Flow",
   description: "Privacy-first portfolio tracker for the Sui ecosystem",
 };
 

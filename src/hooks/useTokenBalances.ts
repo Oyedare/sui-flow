@@ -1,8 +1,10 @@
 "use client";
 
-import { useCurrentAccount, useSuiClientQuery } from "@mysten/dapp-kit";
+import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
 import { useMemo } from "react";
 import { getFullnodeUrl, SuiClient } from "@mysten/sui.js/client";
+import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/contexts/SettingsContext";
 
 // Define a type for our enriched token data
 export interface TokenBalance {
@@ -20,36 +22,58 @@ export interface TokenBalance {
 
 export function useTokenBalances() {
   const account = useCurrentAccount();
-  
-  // 1. Fetch all balances for the connected account
-  const { data: balances, isLoading: isBalancesLoading, error: balancesError } = useSuiClientQuery(
-    "getAllBalances",
-    { owner: account?.address || "" },
-    {
-      enabled: !!account,
-      refetchInterval: 10000, // Refresh every 10s
+  const client = useSuiClient();
+  const { settings } = useSettings();
+
+  // Combine connected account + watched wallets
+  const allAddresses = useMemo(() => {
+    const list = [...settings.watchedWallets];
+    if (account?.address && !list.includes(account.address)) {
+      list.unshift(account.address);
     }
-  );
+    return list;
+  }, [account?.address, settings.watchedWallets]);
 
-  // 2. We need to fetch metadata for each unique coin type found
-  // Note: simpler to use the useSuiClient implementation inside a useEffect or 
-  // multiple useSuiClientQuery calls, but for dynamic lists, react-query's `useQueries` 
-  // or a manual fetch in useEffect with results stored in state/cache is often cleaner.
-  // For MVP, we'll try a simpler approach: 
-  // We can't easily hook `useSuiClientQuery` in a loop.
-  // We will assume basic metadata fetching.
+  // Use useQuery to handle async fetching for multiple addresses
+  const { data: balances, isLoading, error } = useQuery({
+    queryKey: ["all-balances", allAddresses.join(",")],
+    queryFn: async () => {
+      if (allAddresses.length === 0) return [];
 
-  // Let's use a separate logic for metadata. 
-  // Ideally, dApp Kit would have a 'useCoinMetadata' that accepts a list, but it's 1-by-1.
-  // We'll create a lightweight custom fetcher for metadata inside the components or here.
-  
-  // Since we cannot run hooks conditionally or in loops easily without `useQueries`,
-  // let's just return the raw balances and let the UI component or a sub-provider handle metadata
-  // OR we can implement a `useQueries` pattern if we install it, but `dapp-kit` wraps `tanstack-query`.
+      // Fetch all in parallel
+      const results = await Promise.all(
+        allAddresses.map(owner => client.getAllBalances({ owner }))
+      );
+
+      // Flatten and Aggregate
+      const aggMap = new Map<string, { coinType: string; totalBalance: bigint; lockedBalance: object | null }>();
+
+      results.forEach(res => {
+        res.forEach(balance => {
+          if (!aggMap.has(balance.coinType)) {
+            aggMap.set(balance.coinType, {
+              coinType: balance.coinType,
+              totalBalance: BigInt(0),
+              lockedBalance: null // complex merging skipped for MVP
+            });
+          }
+          const current = aggMap.get(balance.coinType)!;
+          current.totalBalance += BigInt(balance.totalBalance);
+        });
+      });
+
+      return Array.from(aggMap.values()).map(b => ({
+        ...b,
+        totalBalance: b.totalBalance.toString()
+      }));
+    },
+    enabled: allAddresses.length > 0,
+    refetchInterval: 10000,
+  });
 
   return {
     balances: balances || [],
-    isLoading: isBalancesLoading,
-    error: balancesError,
+    isLoading,
+    error,
   };
 }

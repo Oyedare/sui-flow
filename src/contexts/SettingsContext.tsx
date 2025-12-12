@@ -10,9 +10,12 @@ export type Network = "mainnet" | "testnet";
 interface Settings {
   currency: Currency;
   theme: Theme;
+  accentColor: string; // Hex code
   taxMethod: TaxMethod;
   showSuinsProfile: boolean;
+  hideBalances: boolean;
   network: Network;
+  watchedWallets: string[];
 }
 
 interface SettingsContextType {
@@ -24,9 +27,12 @@ interface SettingsContextType {
 const defaultSettings: Settings = {
   currency: "USD",
   theme: "system",
+  accentColor: "#2563eb", // Default blue-600
   taxMethod: "FIFO",
   showSuinsProfile: true,
+  hideBalances: false,
   network: "mainnet",
+  watchedWallets: [],
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -77,6 +83,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return () => mediaQuery.removeEventListener("change", listener);
     }
   }, [settings.theme]);
+
+  // Apply accent color
+  useEffect(() => {
+    const root = document.documentElement;
+    const hex = settings.accentColor || "#2563eb";
+    
+    // Convert hex to rgb
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    
+    root.style.setProperty("--accent", hex);
+    root.style.setProperty("--accent-rgb", `${r} ${g} ${b}`);
+  }, [settings.accentColor]);
 
   const updateSettings = (updates: Partial<Settings>) => {
     setSettings((prev) => {

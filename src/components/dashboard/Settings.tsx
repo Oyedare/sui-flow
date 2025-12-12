@@ -1,11 +1,16 @@
 "use client";
 
 import { useSettings, Currency, Theme, TaxMethod, Network } from "@/contexts/SettingsContext";
-import { Settings as SettingsIcon, Palette, DollarSign, Calculator, Globe } from "lucide-react";
+import { Settings as SettingsIcon, Palette, DollarSign, Calculator, Globe, Database, UploadCloud, DownloadCloud, Copy, Trash2, Plus, Wallet } from "lucide-react";
 import clsx from "clsx";
+import { useTransactionMetadata } from "@/hooks/useTransactionMetadata";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { useState } from "react";
+import { useOnboarding } from "@/hooks/useOnboarding";
 
 export function Settings() {
   const { settings, updateSettings, getCurrencySymbol } = useSettings();
+  const { startTour } = useOnboarding();
 
   const currencies: Currency[] = ["USD", "EUR", "GBP", "NGN", "JPY"];
   const themes: { value: Theme; label: string }[] = [
@@ -22,12 +27,20 @@ export function Settings() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <SettingsIcon className="text-blue-600 dark:text-blue-400" size={28} />
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Customize your Sui Flow experience</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <SettingsIcon className="text-[var(--accent)]" size={28} />
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Customize your Flow experience</p>
+          </div>
         </div>
+        <button
+          onClick={startTour}
+          className="px-4 py-2 text-sm font-medium text-[var(--accent)] bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 rounded-full transition-colors"
+        >
+          Replay Tour
+        </button>
       </div>
 
       {/* Settings Sections */}
@@ -52,7 +65,7 @@ export function Settings() {
                   className={clsx(
                     "flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all",
                     settings.theme === theme.value
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                      ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/25"
                       : "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700"
                   )}
                 >
@@ -60,6 +73,49 @@ export function Settings() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Accent Color */}
+          <div className="mb-6">
+             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Accent Color
+             </label>
+             <div className="flex flex-wrap gap-3">
+                {[
+                   { name: 'Blue', hex: '#2563eb' },
+                   { name: 'Purple', hex: '#9333ea' },
+                   { name: 'Pink', hex: '#db2777' },
+                   { name: 'Orange', hex: '#ea580c' },
+                   { name: 'Teal', hex: '#0d9488' },
+                ].map(color => (
+                   <button
+                      key={color.hex}
+                      onClick={() => updateSettings({ accentColor: color.hex })}
+                      className={clsx(
+                         "w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center",
+                         settings.accentColor === color.hex ? "border-gray-900 dark:border-white scale-110" : "border-transparent hover:scale-105"
+                      )}
+                      style={{ backgroundColor: color.hex }}
+                      title={color.name}
+                   >
+                      {settings.accentColor === color.hex && <div className="w-2 h-2 bg-white rounded-full" />}
+                   </button>
+                ))}
+                
+                {/* Custom Color Picker */}
+                <div className="relative">
+                   <div className="w-10 h-10 rounded-full border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex items-center justify-center cursor-pointer overflow-hidden relative">
+                      <div className="absolute inset-0 bg-gradient-to-tr from-blue-500 via-purple-500 to-pink-500 opacity-50 pointer-events-none" />
+                      <Plus size={16} className="absolute text-gray-500 pointer-events-none" />
+                      <input 
+                        type="color" 
+                        value={settings.accentColor} 
+                        onChange={(e) => updateSettings({ accentColor: e.target.value })}
+                        className="opacity-0 absolute inset-0 cursor-pointer w-full h-full z-10"
+                      />
+                   </div>
+                </div>
+             </div>
           </div>
 
           {/* Currency */}
@@ -75,7 +131,7 @@ export function Settings() {
                   className={clsx(
                     "px-4 py-2 rounded-lg font-medium text-sm transition-all",
                     settings.currency === currency
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                      ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/25"
                       : "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700"
                   )}
                 >
@@ -108,7 +164,7 @@ export function Settings() {
                   className={clsx(
                     "flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all",
                     settings.taxMethod === method
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                      ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/25"
                       : "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700"
                   )}
                 >
@@ -147,7 +203,7 @@ export function Settings() {
                   className={clsx(
                     "w-full px-4 py-3 rounded-lg font-medium text-sm transition-all text-left",
                     settings.network === network.value
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                      ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/25"
                       : "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700"
                   )}
                 >
@@ -174,7 +230,7 @@ export function Settings() {
             <DollarSign size={20} className="text-gray-600 dark:text-gray-400" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Profile</h3>
           </div>
-
+          {/* ... existing profile code ... */}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -188,7 +244,7 @@ export function Settings() {
               onClick={() => updateSettings({ showSuinsProfile: !settings.showSuinsProfile })}
               className={clsx(
                 "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                settings.showSuinsProfile ? "bg-blue-600" : "bg-gray-300 dark:bg-zinc-700"
+                settings.showSuinsProfile ? "bg-[var(--accent)]" : "bg-gray-300 dark:bg-zinc-700"
               )}
             >
               <span
@@ -200,7 +256,211 @@ export function Settings() {
             </button>
           </div>
         </div>
+
+        {/* Watch-only Wallets */}
+        <div className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <Wallet size={20} className="text-gray-600 dark:text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Watch-only Wallets</h3>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Add other wallet addresses to view their assets combined with yours.
+            </p>
+
+            {/* List */}
+            {settings.watchedWallets.length > 0 && (
+              <div className="space-y-2">
+                {settings.watchedWallets.map((wallet) => (
+                  <div key={wallet} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-gray-200 dark:border-zinc-700/50">
+                     <span className="font-mono text-sm text-gray-700 dark:text-gray-300 truncate mr-2">
+                       {wallet}
+                     </span>
+                     <button
+                        onClick={() => updateSettings({ watchedWallets: settings.watchedWallets.filter(w => w !== wallet) })}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        title="Remove wallet"
+                     >
+                       <Trash2 size={16} />
+                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add New */}
+            <div className="flex gap-2">
+               <div className="flex-1">
+                 <WatchedWalletInput 
+                   onAdd={(address) => {
+                     if (settings.watchedWallets.includes(address)) return;
+                     updateSettings({ watchedWallets: [...settings.watchedWallets, address] });
+                   }} 
+                 />
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Data Sync Settings */}
+        <DataSyncSection />
+
       </div>
+    </div>
+  );
+}
+
+function DataSyncSection() {
+    const { backupMetadata, restoreMetadata } = useTransactionMetadata();
+    const { addNotification } = useNotifications();
+    const [backupId, setBackupId] = useState<string | null>(null);
+    const [restoreId, setRestoreId] = useState("");
+    const [isBackingUp, setIsBackingUp] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(false);
+
+    const handleBackup = async () => {
+        setIsBackingUp(true);
+        try {
+            const id = await backupMetadata();
+            setBackupId(id);
+            addNotification("success", "Backup created successfully", "Backup Saved");
+        } catch (e) {
+            addNotification("error", "Failed to backup data to Walrus", "Backup Failed");
+        } finally {
+            setIsBackingUp(false);
+        }
+    };
+
+    const handleRestore = async () => {
+        if (!restoreId.trim()) return;
+        setIsRestoring(true);
+        try {
+            const success = await restoreMetadata(restoreId.trim());
+            if (success) {
+                 addNotification("success", "Data restored successfully", "Restore Complete");
+                 setRestoreId("");
+            } else {
+                 throw new Error("Restore returned false");
+            }
+        } catch (e) {
+            addNotification("error", "Failed to restore data. Check Blob ID.", "Restore Failed");
+        } finally {
+            setIsRestoring(false);
+        }
+    };
+
+    return (
+        <div className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <Database size={20} className="text-gray-600 dark:text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Data Sync (Walrus)</h3>
+          </div>
+          
+          <div className="space-y-6">
+              {/* Backup */}
+              <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700/50">
+                  <div className="flex items-start justify-between mb-4">
+                      <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                              <UploadCloud size={16} className="text-blue-500" /> Backup Data
+                          </h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Save your custom titles, labels, and notes to Walrus decentralized storage.
+                          </p>
+                      </div>
+                  </div>
+                  
+                  {backupId ? (
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-lg p-3">
+                          <p className="text-xs text-green-700 dark:text-green-300 font-medium mb-1">Backup Successful! Save this ID:</p>
+                          <div className="flex items-center gap-2">
+                              <code className="text-xs bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-green-200 dark:border-green-800/50 flex-1 truncate font-mono text-gray-700 dark:text-gray-300 select-all">
+                                  {backupId}
+                              </code>
+                              <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(backupId);
+                                    addNotification("success", "ID copied to clipboard", "Copied");
+                                }}
+                                className="p-1.5 hover:bg-green-200 dark:hover:bg-green-800 rounded text-green-700 dark:text-green-300"
+                              >
+                                  <Copy size={14} />
+                              </button>
+                          </div>
+                      </div>
+                  ) : (
+                      <button 
+                        onClick={handleBackup}
+                        disabled={isBackingUp}
+                        className="w-full py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                          {isBackingUp ? "Backing up..." : "Create Backup"}
+                      </button>
+                  )}
+              </div>
+
+              {/* Restore */}
+              <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700/50">
+                  <div className="flex items-start justify-between mb-4">
+                      <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                              <DownloadCloud size={16} className="text-purple-500" /> Restore Data
+                          </h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Enter a Walrus Blob ID to restore your data on this device.
+                          </p>
+                      </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                      <input 
+                        value={restoreId}
+                        onChange={(e) => setRestoreId(e.target.value)}
+                        placeholder="Enter Blob ID..."
+                        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
+                      />
+                      <button 
+                        onClick={handleRestore}
+                        disabled={isRestoring || !restoreId}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                          {isRestoring ? "Restoring..." : "Restore"}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      </div>
+    );
+}
+
+function WatchedWalletInput({ onAdd }: { onAdd: (address: string) => void }) {
+  const [input, setInput] = useState("");
+
+  const handleAdd = () => {
+    if (!input.trim().startsWith("0x") || input.trim().length < 50) {
+      if (!input.includes("0x")) return; 
+    }
+    onAdd(input.trim());
+    setInput("");
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input 
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Enter 0x... address"
+        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
+        onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+      />
+      <button 
+        onClick={handleAdd}
+        disabled={!input}
+        className="px-3 py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-lg transition-colors"
+      >
+        <Plus size={20} />
+      </button>
     </div>
   );
 }

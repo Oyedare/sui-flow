@@ -12,7 +12,7 @@ export function identifyProtocol(coinType: string): ProtocolInfo | null {
   if (type.includes("::cetus::") || type.includes("::lps::")) { 
     return {
       name: "Cetus Protocol",
-      url: "https://app.cetus.zone/pool/list",
+      url: "https://app.cetus.zone/", // Direct to main app to trigger 'My Positions' view
       color: "text-orange-500",
       type: 'LP'
     };
@@ -32,7 +32,7 @@ export function identifyProtocol(coinType: string): ProtocolInfo | null {
   if (type.includes("::kriya::") || type.includes("::spot::")) {
     return {
       name: "Kriya DEX",
-      url: "https://app.kriya.finance/spot/swap",
+      url: "https://app.kriya.finance/portfolio",
       color: "text-purple-500",
       type: 'LP'
     };
@@ -42,10 +42,20 @@ export function identifyProtocol(coinType: string): ProtocolInfo | null {
   if (type.includes("::aftermath::") || type.includes("::af_lp::")) {
     return {
       name: "Aftermath Finance",
-      url: "https://aftermath.finance/pools",
+      url: "https://aftermath.finance/stake",
       color: "text-yellow-500",
       type: 'LP'
     };
+  }
+
+  // Navi (Lending)
+  if (type.includes("::navi::") || type.includes("::n_coin::")) {
+      return {
+        name: "Navi Protocol",
+        url: "https://app.naviprotocol.io/",
+        color: "text-teal-500",
+        type: 'LENDING'
+      };
   }
 
   // Scallop (Lending)

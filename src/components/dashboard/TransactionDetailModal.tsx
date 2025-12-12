@@ -1,8 +1,12 @@
 "use client";
 
-import { X, ExternalLink, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { X, ExternalLink, ArrowDownLeft, ArrowUpRight, StickyNote, Tag, Save, Pencil } from "lucide-react";
 import { SuiTransactionBlockResponse } from "@mysten/sui.js/client";
 import { formatBalance, getDecimals, getSymbol } from "@/lib/format";
+import { useTransactionMetadata } from "@/hooks/useTransactionMetadata";
+import { useState } from "react";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface TransactionDetailModalProps {
   tx: SuiTransactionBlockResponse;
@@ -10,38 +14,94 @@ interface TransactionDetailModalProps {
 }
 
 export function TransactionDetailModal({ tx, onClose }: TransactionDetailModalProps) {
+  const { settings } = useSettings();
   const isSuccess = tx.effects?.status.status === "success";
   const timestamp = tx.timestampMs ? new Date(Number(tx.timestampMs)).toLocaleString() : "Unknown Date";
+  const { addNotification } = useNotifications();
 
-  // Parse Balance Changes
+  // New Metadata Hook
+  const { getMetadata, updateMetadata } = useTransactionMetadata();
+  const savedMeta = getMetadata(tx.digest);
+
+  // Local State for editing
+  const [title, setTitle] = useState(savedMeta.title || "");
+  const [note, setNote] = useState(savedMeta.note || "");
+  const [labels, setLabels] = useState<string[]>(savedMeta.labels || []);
+  const [newLabel, setNewLabel] = useState("");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  const getAlphaColor = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  const handleSave = () => {
+    updateMetadata(tx.digest, {
+        title,
+        note,
+        labels
+    });
+    addNotification("success", "Transaction details saved successfully", "Saved");
+    // Optionally close or just show success
+  };
+
+  const addLabel = (e?: React.FormEvent) => {
+      e?.preventDefault();
+      if (newLabel.trim() && !labels.includes(newLabel.trim())) {
+          setLabels([...labels, newLabel.trim()]);
+          setNewLabel("");
+      }
+  };
+
+  const removeLabel = (label: string) => {
+      setLabels(labels.filter(l => l !== label));
+  };
+
+  // ... Balance parsing logic (unchanged)
   const changes = tx.balanceChanges || [];
-  
-  // We only care about changes for the current user (owner), but typically the RPC returns 
-  // changes relevant to the query. For now, we list all changes present in the response object
-  // which are usually grouped by owner.
-  
   const assetsIn = changes.filter(c => parseInt(c.amount) > 0);
   const assetsOut = changes.filter(c => parseInt(c.amount) < 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-100 dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-100 dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-zinc-800">
-          <div>
-             <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Transaction Details</h3>
-             <span className={`text-xs px-2 py-0.5 rounded-full ${isSuccess ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-               {isSuccess ? 'Success' : 'Failed'}
-             </span>
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-zinc-800 shrink-0">
+          <div className="flex-1 mr-4">
+             {isEditingTitle ? (
+                 <input 
+                    autoFocus
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    onBlur={() => setIsEditingTitle(false)}
+                    placeholder="Transaction Title"
+                    className="w-full text-lg font-bold text-gray-900 dark:text-gray-100 bg-transparent border-b-2 focus:outline-none"
+                    style={{ borderColor: settings.accentColor }}
+                 />
+             ) : (
+                 <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingTitle(true)}>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
+                        {title || "Transaction Details"}
+                    </h3>
+                    <Pencil size={14} className="text-gray-400 transition-colors group-hover:text-[var(--accent)]" />
+                 </div>
+             )}
+             <div className="flex items-center gap-2 mt-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${isSuccess ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                   {isSuccess ? 'Success' : 'Failed'}
+                </span>
+             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
             <X size={20} className="text-gray-500" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+        {/* Body - Scrollable */}
+        <div className="p-6 space-y-6 overflow-y-auto">
           
           {/* Summary Stats */}
           <div className="grid grid-cols-2 gap-4">
@@ -57,8 +117,40 @@ export function TransactionDetailModal({ tx, onClose }: TransactionDetailModalPr
              </div>
           </div>
 
+          {/* Labels Section */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+                <Tag size={16} className="text-gray-400" />
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Labels</h4>
+             </div>
+             <div className="flex flex-wrap gap-2 mb-2">
+                 {labels.map(label => (
+                     <span 
+                        key={label} 
+                        className="px-2 py-1 rounded-full text-xs flex items-center gap-1"
+                        style={{ 
+                            backgroundColor: getAlphaColor(settings.accentColor, 0.1),
+                            color: settings.accentColor 
+                        }}
+                     >
+                         #{label}
+                         <button onClick={() => removeLabel(label)} className="hover:opacity-70"><X size={10} /></button>
+                     </span>
+                 ))}
+             </div>
+             <form onSubmit={addLabel} className="flex gap-2">
+                 <input 
+                   value={newLabel}
+                   onChange={(e) => setNewLabel(e.target.value)}
+                   placeholder="Add tag (e.g. #food)"
+                   className="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none border-transparent focus:border-[var(--accent)]"
+                 />
+                 <button type="submit" disabled={!newLabel.trim()} className="px-3 py-2 bg-gray-100 dark:bg-zinc-700 rounded-lg text-sm font-medium disabled:opacity-50">Add</button>
+             </form>
+          </div>
+
           {/* Asset Changes */}
-          <div className="space-y-4">
+           <div className="space-y-4">
             {assetsOut.length > 0 && (
                 <div>
                     <h4 className="text-sm font-semibold text-gray-500 mb-2 flex items-center gap-1">
@@ -106,17 +198,42 @@ export function TransactionDetailModal({ tx, onClose }: TransactionDetailModalPr
             )}
           </div>
 
+          {/* User Note */}
+          <div className="pt-4 border-t border-gray-100 dark:border-zinc-800">
+             <div className="flex items-center gap-2 mb-2">
+                <StickyNote size={16} className="text-gray-400" />
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Note</h4>
+             </div>
+             <textarea 
+               value={note}
+               onChange={(e) => setNote(e.target.value)}
+               placeholder="Add a note to remember this transaction..."
+               className="w-full p-3 bg-gray-50 dark:bg-zinc-800 rounded-xl border-none focus:ring-2 text-sm text-gray-900 dark:text-gray-100 resize-none h-24 placeholder:text-gray-400"
+               style={{ '--tw-ring-color': getAlphaColor(settings.accentColor, 0.2) } as any}
+             />
+          </div>
+
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50">
+        <div className="p-6 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 shrink-0 flex gap-3">
+          <button
+              onClick={handleSave}
+              className="flex-1 flex items-center justify-center gap-2 py-3 text-white rounded-xl font-medium transition-opacity hover:opacity-90 shadow-lg"
+              style={{ 
+                  backgroundColor: settings.accentColor,
+                  boxShadow: `0 10px 15px -3px ${getAlphaColor(settings.accentColor, 0.2)}`
+              }}
+            >
+              <Save size={18} /> Save Changes
+          </button>
           <a
             href={`https://suiscan.xyz/mainnet/tx/${tx.digest}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
+            className="px-4 flex items-center justify-center gap-2 py-3 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium transition-colors"
           >
-            View on Explorer <ExternalLink size={16} />
+            <ExternalLink size={18} />
           </a>
         </div>
       </div>
