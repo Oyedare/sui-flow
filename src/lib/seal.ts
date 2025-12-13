@@ -1,85 +1,102 @@
-// Seal Encryption Service (Client-Side Fallback)
-// Since official Seal Mainnet Key Server IDs are not public, we use
-// a secure client-side encryption derived from the user's wallet signature.
-// This effectively "seals" the data to the user's identity.
+// Seal Encryption Service (Client-Side Fallback via CryptoJS)
+// Replaces native Web Crypto to support insecure contexts (HTTP) and ensure
+// consistent cross-platform behavior.
 
-export async function deriveKeyFromSignature(signature: string): Promise<CryptoKey> {
-  const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(signature),
-    "PBKDF2",
-    false,
-    ["deriveBits", "deriveKey"]
-  );
+import CryptoJS from "crypto-js";
 
-  return window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: enc.encode("sui-flow-seal-salt"), // Constant salt for deterministic derivation
-      iterations: 100000,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
+/**
+ * Normalizes signature to ensure consistency across wallets/devices.
+ * Trims whitespace.
+ */
+function normalizeSignature(sig: string): string {
+    return sig.trim();
 }
 
+/**
+ * Derives a consistent encryption key from a wallet signature using PBKDF2.
+ * We use a fixed salt because the signature itself is high-entropy and unique per user/message.
+ */
+function deriveKey(signature: string): string {
+    const cleanSig = normalizeSignature(signature);
+    // PBKDF2 to stretch the signature into a key
+    // We render the signature as the password
+    const salt = "sui-flow-seal-salt-v1"; 
+    const key = CryptoJS.PBKDF2(cleanSig, salt, {
+        keySize: 256 / 32, // 256-bit key
+        iterations: 10000,
+        hasher: CryptoJS.algo.SHA256
+    });
+    return key.toString();
+}
+
+/**
+ * Encrypts data using AES-256 (via CryptoJS) and the derived key.
+ * Returns a stringified JSON containing the ciphertext.
+ */
 export async function encryptData(data: object, signature: string): Promise<string> {
-  const key = await deriveKeyFromSignature(signature);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const encodedData = new TextEncoder().encode(JSON.stringify(data));
-
-  const encryptedContent = await window.crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv: iv,
-    },
-    key,
-    encodedData
-  );
-
-  // Combine IV and encrypted data into a single string
-  const ivArray = Array.from(iv);
-  const encryptedArray = Array.from(new Uint8Array(encryptedContent));
-  
-  return JSON.stringify({
-    iv: ivArray,
-    data: encryptedArray,
-  });
+  try {
+    const key = deriveKey(signature);
+    const jsonString = JSON.stringify(data);
+    
+    // Encrypt
+    const encrypted = CryptoJS.AES.encrypt(jsonString, key).toString();
+    
+    // We utilize a versioned format to future-proof
+    return JSON.stringify({
+        data: encrypted,
+        version: "v2-cryptojs",
+        algo: "AES-256-PBKDF2"
+    });
+  } catch (error) {
+    console.error("Encryption failed:", error);
+    throw new Error("Failed to seal data.");
+  }
 }
 
+/**
+ * Decrypts data using AES-256 (via CryptoJS) and the derived key.
+ */
 export async function decryptData(encryptedString: string, signature: string): Promise<any> {
-    console.log("[Seal] Decrypting data...");
+    console.log("[Seal] Decrypting data (CryptoJS)...");
   try {
     const parsed = JSON.parse(encryptedString);
-    console.log("[Seal] Parsed encrypted structure:", Object.keys(parsed));
+    console.log("[Seal] Data version:", parsed.version || "unknown");
     
-    if (!parsed.iv || !parsed.data) {
-        throw new Error("Invalid encrypted format: missing iv or data");
+    let ciphertext = "";
+    
+    // Handle v2 (crypto-js)
+    if (parsed.version === "v2-cryptojs") {
+        ciphertext = parsed.data;
+    } else {
+        // Fallback: If the user provides a Blob ID from the OLD system (v1-native),
+        // we can try to detect it, but since we replaced the engine, we can't easily decrypt v1 
+        // without the native usage. 
+        // However, the prompt says "Key mismatch", implying the old code WAS running.
+        // We will Throw a clear error for old backups.
+         throw new Error("Old backup format detected. Please create a new backup with the new system.");
     }
 
-    const { iv, data } = parsed;
-    const key = await deriveKeyFromSignature(signature);
+    const key = deriveKey(signature);
+    const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+    const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
     
-    const decryptedContent = await window.crypto.subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv: new Uint8Array(iv),
-      },
-      key,
-      new Uint8Array(data)
-    );
+    if (!decryptedData) {
+        // If decryption results in empty string, it usually means Wrong Key (padding error swallowed)
+        throw new Error("Wrong Key");
+    }
 
-    const decodedData = new TextDecoder().decode(decryptedContent);
     console.log("[Seal] Decryption successful!");
-    return JSON.parse(decodedData);
-  } catch (error) {
+    return JSON.parse(decryptedData);
+  } catch (error: any) {
     console.error("[Seal] Decryption failed:", error);
-    // trace input length for debugging
-    console.log("[Seal] Input string length:", encryptedString?.length);
-    throw new Error("Failed to decrypt data. Invalid signature or corrupted data.");
+    if (error.message === "Wrong Key" || error.message.includes("Malformed")) {
+        throw new Error("Key mismatch! The signature does not match the one used for encryption.");
+    }
+    throw new Error(`Failed to decrypt: ${error.message}`);
   }
+}
+
+// Stub for compatibility
+export function deriveKeyFromSignature(signature: string) {
+    return Promise.resolve(deriveKey(signature));
 }

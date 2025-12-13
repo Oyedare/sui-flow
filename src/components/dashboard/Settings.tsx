@@ -7,7 +7,7 @@ import { useTransactionMetadata } from "@/hooks/useTransactionMetadata";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useState } from "react";
 import { useOnboarding } from "@/hooks/useOnboarding";
-import { useSignPersonalMessage } from "@mysten/dapp-kit";
+import { useSignPersonalMessage, useCurrentAccount } from "@mysten/dapp-kit";
 
 export function Settings() {
   const { settings, updateSettings, getCurrencySymbol } = useSettings();
@@ -316,51 +316,88 @@ function DataSyncSection() {
     const { backupMetadata, restoreMetadata } = useTransactionMetadata();
     const { addNotification } = useNotifications();
     const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+    const currentAccount = useCurrentAccount();
     const [backupId, setBackupId] = useState<string | null>(null);
     const [restoreId, setRestoreId] = useState("");
+    const [sealPassword, setSealPassword] = useState("");
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
+
+    const getKeyMaterial = async (action: "backup" | "restore") => {
+        if (sealPassword.trim()) {
+            console.log(`[Seal] Using Manual Password for ${action}`);
+            return { signature: sealPassword.trim(), isPassword: true };
+        }
+        
+        // Fallback to Wallet Signature
+        const message = new TextEncoder().encode("Sign this message to authenticate and process your Seal Backup.");
+        const signature = await signPersonalMessage({ message });
+        return { signature: signature.signature, isPassword: false };
+    };
 
     const handleBackup = async () => {
         setIsBackingUp(true);
         try {
-            // 1. Request signature for encryption key
-            const message = new TextEncoder().encode("Sign this message to authenticate and process your Seal Backup.");
-            const signature = await signPersonalMessage({ message });
+            // 1. Get Encryption Key (Password or Signature)
+            const { signature, isPassword } = await getKeyMaterial("backup");
             
+            // Debug: Show verification fingerprint
+            const fingerprint = signature.slice(0, 8) + "...";
+            console.log("[Seal] Key Fingerprint:", fingerprint);
+
             // 2. Perform backup with encryption
-            // We pass the signature which will be used by the internal backup logic 
-            // to encrypt via seal.encryptData before uploading
-            const id = await backupMetadata(signature.signature);
+            const id = await backupMetadata(signature);
             setBackupId(id);
-            addNotification("success", "Backup encrypted & saved to Walrus", "Sealed Backup Created");
-        } catch (e) {
+            addNotification("success", `Encrypted! ${isPassword ? "Password used." : `Wallet Key: ${fingerprint}`}`, "Sealed Backup Created");
+        } catch (e: any) {
             console.error(e);
-            addNotification("error", "Failed to seal backup. Signature rejected?", "Backup Failed");
+            
+            const msg = e.message || "";
+            if (msg.includes("Rejected") || msg.includes("Cancel")) {
+                addNotification("error", "Signature request cancelled.", "Backup Cancelled");
+            } else {
+                addNotification("error", `Error: ${msg.slice(0, 50)}...`, "Backup Failed");
+            }
         } finally {
             setIsBackingUp(false);
         }
     };
 
     const handleRestore = async () => {
-        if (!restoreId.trim()) return;
+        const cleanId = restoreId.trim();
+        if (!cleanId) return;
+        
         setIsRestoring(true);
+        let fingerprint = "Unknown";
+        let usedPassword = false;
+        
         try {
-            // 1. Request signature for decryption key
-            const message = new TextEncoder().encode("Sign this message to authenticate and process your Seal Backup.");
-            const signature = await signPersonalMessage({ message });
+            // 1. Get Decryption Key
+            const { signature, isPassword } = await getKeyMaterial("restore");
+            usedPassword = isPassword;
+            fingerprint = signature.slice(0, 8) + "...";
 
             // 2. Restore with decryption
-            const success = await restoreMetadata(restoreId.trim(), signature.signature);
+            const success = await restoreMetadata(cleanId, signature);
             if (success) {
-                 addNotification("success", "Data unsealed & restored successfully", "Restore Complete");
+                 addNotification("success", `Restored!`, "Restore Complete");
                  setRestoreId("");
             } else {
                  throw new Error("Restore returned false");
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            addNotification("error", "Failed to unseal data. Wrong account or Blob ID?", "Restore Failed");
+            const msg = e.message || "";
+            
+            if (msg.includes("Walrus read failed") || msg.includes("404")) {
+                 addNotification("error", "Blob ID not found. Check input.", "Download Failed");
+            } else if (msg.includes("decrypt") || msg.includes("padding") || msg.includes("Key mismatch")) {
+                 const addr = currentAccount?.address ? `${currentAccount.address.slice(0,6)}...` : "Unknown";
+                 const keyType = usedPassword ? "Password" : "Wallet Key";
+                 addNotification("error", `Key mismatch! Used ${keyType}: ${fingerprint}. Address: ${addr}`, "Decryption Failed");
+            } else {
+                 addNotification("error", `Failed: ${msg.slice(0, 40)}...`, "Restore Failed");
+            }
         } finally {
             setIsRestoring(false);
         }
@@ -379,6 +416,23 @@ function DataSyncSection() {
           </div>
           
           <div className="space-y-6">
+              {/* Optional Password Input */}
+              <div className="bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded-lg border border-yellow-100 dark:border-yellow-900/30">
+                  <label className="block text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+                      Cross-Device Password (Recommended)
+                  </label>
+                  <input 
+                    type="password"
+                    value={sealPassword}
+                    onChange={(e) => setSealPassword(e.target.value)}
+                    placeholder="Enter a secret password..."
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 rounded border border-yellow-200 dark:border-yellow-800 focus:outline-none focus:border-yellow-500"
+                  />
+                  <p className="text-[10px] text-yellow-700 dark:text-yellow-400 mt-1">
+                      If set, this password will be used to encrypt/decrypt instead of your wallet signature. Use this if you have issues restoring on other devices.
+                  </p>
+              </div>
+
               {/* Backup */}
               <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700/50">
                   <div className="flex items-start justify-between mb-4">
@@ -387,7 +441,7 @@ function DataSyncSection() {
                               <UploadCloud size={16} className="text-blue-500" /> Seal & Backup
                           </h4>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Encrypt settings with your wallet signature and save to Walrus.
+                              Encrypt settings and save to Walrus.
                           </p>
                       </div>
                   </div>
@@ -424,7 +478,7 @@ function DataSyncSection() {
                           ) : (
                               <>
                                 <UploadCloud size={16} />
-                                Create Sealed Backup
+                                {sealPassword ? "Seal with Password" : "Seal with Wallet"}
                               </>
                           )}
                       </button>
