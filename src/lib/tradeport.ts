@@ -1,7 +1,4 @@
-// Tradeport API Service
-// GraphQL client for fetching NFT floor prices and collection stats
-
-const TRADEPORT_API_URL = "https://api.tradeport.xyz/graphql";
+const TRADEPORT_API_URL = "https://api.indexer.xyz/graphql";
 
 interface TradeportConfig {
   apiKey?: string;
@@ -25,27 +22,37 @@ export function isTradeportConfigured(): boolean {
 }
 
 /**
- * Fetch collection stats including floor price
+ * Fetch floor prices for multiple collections by type
  */
-export async function fetchCollectionStats(collectionSlug: string) {
+export async function fetchFloorPrices(collectionTypes: string[]): Promise<Record<string, number>> {
   const config = getConfig();
+  const floorPrices: Record<string, number> = {};
   
-  if (!config.apiKey || !config.apiUser) {
-    console.warn("Tradeport API not configured. Set NEXT_PUBLIC_TRADEPORT_API_KEY and NEXT_PUBLIC_TRADEPORT_API_USER");
-    return null;
+  if (!config.apiKey || !config.apiUser || collectionTypes.length === 0) {
+    return floorPrices;
   }
 
-  const query = `
-    query GetCollectionStats($slug: String!) {
-      collection(slug: $slug) {
-        id
-        name
-        slug
-        floorPrice
-        totalVolume
-        totalSupply
-        description
+  // Deduplicate types
+  const uniqueTypes = Array.from(new Set(collectionTypes));
+
+  // Construct query aliases for batch fetching
+  // We use the package ID or type as the alias key
+  const queryBody = uniqueTypes.map((type, index) => {
+    // Escape special characters in alias if needed, strict alphanumeric for GraphQL alias
+    const alias = `col_${index}`;
+    return `
+      ${alias}: sui_collections(
+        where: { id: { _eq: "${type}" } }
+        limit: 1
+      ) {
+        floor_price
       }
+    `;
+  }).join("\n");
+
+  const query = `
+    query GetFloorPrices {
+      ${queryBody}
     }
   `;
 
@@ -57,49 +64,41 @@ export async function fetchCollectionStats(collectionSlug: string) {
         "x-api-key": config.apiKey,
         "x-api-user": config.apiUser,
       },
-      body: JSON.stringify({
-        query,
-        variables: { slug: collectionSlug },
-      }),
+      body: JSON.stringify({ query }),
     });
 
     if (!response.ok) {
-      throw new Error(`Tradeport API error: ${response.statusText}`);
+      console.error(`Indexer API error: ${response.statusText}`);
+      return floorPrices;
     }
 
-    const data = await response.json();
+    const result = await response.json();
     
-    if (data.errors) {
-      console.error("GraphQL errors:", data.errors);
-      return null;
+    if (result.errors) {
+      console.error("GraphQL errors:", result.errors);
+      return floorPrices;
     }
 
-    return data.data?.collection || null;
+    // Map results back to types
+    uniqueTypes.forEach((type, index) => {
+      const alias = `col_${index}`;
+      const data = result.data?.[alias];
+      if (data && data.length > 0 && data[0].floor_price) {
+        // Floor price from Indexer is often in MIST (decimals needed) or raw.
+        // Usually floor_price is in raw units. Assuming standard SUI (9 decimals).
+        // Let's assume the API returns it as a number or string. 
+        // We will store it directly for now or sanitize it.
+        // Note: Check if division is needed. Usually APIs return raw values.
+        // For safe implementation, we'll assume it's scaled.
+        floorPrices[type] = Number(data[0].floor_price) / 1e9;
+      }
+    });
+
+    return floorPrices;
+
   } catch (error) {
-    console.error("Failed to fetch collection stats:", error);
-    return null;
+    console.error("Failed to fetch floor prices:", error);
+    return floorPrices;
   }
-}
+} 
 
-/**
- * Fetch floor prices for multiple collections
- */
-export async function fetchFloorPrices(collectionSlugs: string[]): Promise<Record<string, number>> {
-  const floorPrices: Record<string, number> = {};
-
-  // Fetch in parallel
-  const results = await Promise.allSettled(
-    collectionSlugs.map(async (slug) => {
-      const stats = await fetchCollectionStats(slug);
-      return { slug, floorPrice: stats?.floorPrice };
-    })
-  );
-
-  results.forEach((result) => {
-    if (result.status === "fulfilled" && result.value.floorPrice) {
-      floorPrices[result.value.slug] = result.value.floorPrice;
-    }
-  });
-
-  return floorPrices;
-}

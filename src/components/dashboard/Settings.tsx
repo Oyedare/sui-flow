@@ -7,6 +7,7 @@ import { useTransactionMetadata } from "@/hooks/useTransactionMetadata";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useState } from "react";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { useSignPersonalMessage } from "@mysten/dapp-kit";
 
 export function Settings() {
   const { settings, updateSettings, getCurrencySymbol } = useSettings();
@@ -314,6 +315,7 @@ export function Settings() {
 function DataSyncSection() {
     const { backupMetadata, restoreMetadata } = useTransactionMetadata();
     const { addNotification } = useNotifications();
+    const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
     const [backupId, setBackupId] = useState<string | null>(null);
     const [restoreId, setRestoreId] = useState("");
     const [isBackingUp, setIsBackingUp] = useState(false);
@@ -322,11 +324,19 @@ function DataSyncSection() {
     const handleBackup = async () => {
         setIsBackingUp(true);
         try {
-            const id = await backupMetadata();
+            // 1. Request signature for encryption key
+            const message = new TextEncoder().encode("Sign this message to authenticate and process your Seal Backup.");
+            const signature = await signPersonalMessage({ message });
+            
+            // 2. Perform backup with encryption
+            // We pass the signature which will be used by the internal backup logic 
+            // to encrypt via seal.encryptData before uploading
+            const id = await backupMetadata(signature.signature);
             setBackupId(id);
-            addNotification("success", "Backup created successfully", "Backup Saved");
+            addNotification("success", "Backup encrypted & saved to Walrus", "Sealed Backup Created");
         } catch (e) {
-            addNotification("error", "Failed to backup data to Walrus", "Backup Failed");
+            console.error(e);
+            addNotification("error", "Failed to seal backup. Signature rejected?", "Backup Failed");
         } finally {
             setIsBackingUp(false);
         }
@@ -336,15 +346,21 @@ function DataSyncSection() {
         if (!restoreId.trim()) return;
         setIsRestoring(true);
         try {
-            const success = await restoreMetadata(restoreId.trim());
+            // 1. Request signature for decryption key
+            const message = new TextEncoder().encode("Sign this message to authenticate and process your Seal Backup.");
+            const signature = await signPersonalMessage({ message });
+
+            // 2. Restore with decryption
+            const success = await restoreMetadata(restoreId.trim(), signature.signature);
             if (success) {
-                 addNotification("success", "Data restored successfully", "Restore Complete");
+                 addNotification("success", "Data unsealed & restored successfully", "Restore Complete");
                  setRestoreId("");
             } else {
                  throw new Error("Restore returned false");
             }
         } catch (e) {
-            addNotification("error", "Failed to restore data. Check Blob ID.", "Restore Failed");
+            console.error(e);
+            addNotification("error", "Failed to unseal data. Wrong account or Blob ID?", "Restore Failed");
         } finally {
             setIsRestoring(false);
         }
@@ -353,8 +369,13 @@ function DataSyncSection() {
     return (
         <div className="p-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl">
           <div className="flex items-center gap-2 mb-4">
-            <Database size={20} className="text-gray-600 dark:text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Data Sync (Walrus)</h3>
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <Database size={20} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Seal Data Sync</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Encrypted decentralized backup on Walrus</p>
+            </div>
           </div>
           
           <div className="space-y-6">
@@ -363,17 +384,17 @@ function DataSyncSection() {
                   <div className="flex items-start justify-between mb-4">
                       <div>
                           <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                              <UploadCloud size={16} className="text-blue-500" /> Backup Data
+                              <UploadCloud size={16} className="text-blue-500" /> Seal & Backup
                           </h4>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Save your custom titles, labels, and notes to Walrus decentralized storage.
+                              Encrypt settings with your wallet signature and save to Walrus.
                           </p>
                       </div>
                   </div>
                   
                   {backupId ? (
-                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-lg p-3">
-                          <p className="text-xs text-green-700 dark:text-green-300 font-medium mb-1">Backup Successful! Save this ID:</p>
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
+                          <p className="text-xs text-green-700 dark:text-green-300 font-medium mb-1">Sealed Backup ID (Save this!):</p>
                           <div className="flex items-center gap-2">
                               <code className="text-xs bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-green-200 dark:border-green-800/50 flex-1 truncate font-mono text-gray-700 dark:text-gray-300 select-all">
                                   {backupId}
@@ -393,9 +414,19 @@ function DataSyncSection() {
                       <button 
                         onClick={handleBackup}
                         disabled={isBackingUp}
-                        className="w-full py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="w-full py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                       >
-                          {isBackingUp ? "Backing up..." : "Create Backup"}
+                          {isBackingUp ? (
+                              <>
+                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Sealing...
+                              </>
+                          ) : (
+                              <>
+                                <UploadCloud size={16} />
+                                Create Sealed Backup
+                              </>
+                          )}
                       </button>
                   )}
               </div>
@@ -405,10 +436,10 @@ function DataSyncSection() {
                   <div className="flex items-start justify-between mb-4">
                       <div>
                           <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                              <DownloadCloud size={16} className="text-purple-500" /> Restore Data
+                              <DownloadCloud size={16} className="text-purple-500" /> Unseal & Restore
                           </h4>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Enter a Walrus Blob ID to restore your data on this device.
+                              Decrypt and restore data using your wallet signature.
                           </p>
                       </div>
                   </div>
@@ -417,15 +448,20 @@ function DataSyncSection() {
                       <input 
                         value={restoreId}
                         onChange={(e) => setRestoreId(e.target.value)}
-                        placeholder="Enter Blob ID..."
-                        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
+                        placeholder="Enter Sealed Blob ID..."
+                        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
                       />
                       <button 
                         onClick={handleRestore}
                         disabled={isRestoring || !restoreId}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                       >
-                          {isRestoring ? "Restoring..." : "Restore"}
+                          {isRestoring ? (
+                              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                              <DownloadCloud size={16} />
+                          )}
+                          Restore
                       </button>
                   </div>
               </div>
@@ -451,7 +487,7 @@ function WatchedWalletInput({ onAdd }: { onAdd: (address: string) => void }) {
         value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder="Enter 0x... address"
-        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
+        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none focus:border-blue-500"
         onKeyDown={(e) => e.key === "Enter" && handleAdd()}
       />
       <button 

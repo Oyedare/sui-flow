@@ -17,8 +17,8 @@ interface TransactionMetadataContextType {
   metadata: MetadataMap;
   getMetadata: (digest: string) => TransactionMetadata;
   updateMetadata: (digest: string, updates: Partial<TransactionMetadata>) => void;
-  backupMetadata: () => Promise<string>; // Returns Blob ID
-  restoreMetadata: (blobId: string) => Promise<boolean>; // Returns success status
+  backupMetadata: (signature?: string) => Promise<string>; // Returns Blob ID
+  restoreMetadata: (blobId: string, signature?: string) => Promise<boolean>; // Returns success status
 }
 
 const TransactionMetadataContext = createContext<TransactionMetadataContextType | undefined>(undefined);
@@ -59,12 +59,22 @@ export function TransactionMetadataProvider({ children }: { children: ReactNode 
     });
   };
 
-  const backupMetadata = async (): Promise<string> => {
+  const backupMetadata = async (signature?: string): Promise<string> => {
     try {
-        const json = JSON.stringify(metadata);
-        // In a real app, we might encrypt this with the user's wallet signature
-        // For now, we store as plain text JSON but Walrus IDs are obscure enough for this MVP
-        const blobId = await storeBlob(json);
+        let content = JSON.stringify(metadata);
+        let skipsDefaultEncryption = false;
+        
+        // If signature is provided, encrypt with Seal
+        if (signature) {
+            const { encryptData } = await import("@/lib/seal");
+            content = await encryptData(metadata, signature);
+            skipsDefaultEncryption = true;
+        }
+
+        // Pass false for encryption if we already sealed it
+        // If not sealed, we let storeBlob use its default encryption (true)
+        const blobId = await storeBlob(content, !skipsDefaultEncryption);
+        
         if (!blobId) throw new Error("Failed to upload to Walrus");
         return blobId;
     } catch (e) {
@@ -73,16 +83,35 @@ export function TransactionMetadataProvider({ children }: { children: ReactNode 
     }
   };
 
-  const restoreMetadata = async (blobId: string): Promise<boolean> => {
+  const restoreMetadata = async (blobId: string, signature?: string): Promise<boolean> => {
       try {
-          const blob = await readBlob(blobId);
-          if (!blob) return false;
+          console.log("[Context] Fetching blob:", blobId);
           
-          const parsed = JSON.parse(blob);
+          // If expecting a sealed blob (signature provided), tell readBlob NOT to decrypt (false)
+          // because it wasn't encrypted by readBlob's default logic (or we want raw sealed data)
+          const useDefaultDecryption = !signature;
+          
+          const blob = await readBlob(blobId, useDefaultDecryption);
+          if (!blob) {
+            console.error("[Context] Blob fetch return null/empty");
+            return false;
+          }
+          console.log("[Context] Blob fetched. Length:", blob.length);
+          
+          let parsed: any;
+
+          // If signature provided, try to decrypt with Seal
+          if (signature) {
+             console.log("[Context] Signature provided, attempting decryption...");
+             const { decryptData } = await import("@/lib/seal");
+             parsed = await decryptData(blob, signature);
+          } else {
+             parsed = JSON.parse(blob);
+          }
+          
           if (typeof parsed !== 'object') throw new Error("Invalid format");
 
-          // Merge strategy: Overwrite local with remote? Or smart merge?
-          // Let's do simple merge: Remote wins on conflict, but keep local keys not in remote
+          // Merge strategy
           setMetadata(prev => {
               const next = { ...prev, ...parsed };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -91,7 +120,7 @@ export function TransactionMetadataProvider({ children }: { children: ReactNode 
           return true;
       } catch (e) {
           console.error("Restore failed", e);
-          return false;
+          throw e; 
       }
   };
 

@@ -53,7 +53,6 @@ export function getCollectionName(nftType: string): string {
 /**
  * Get marketplace URL for NFT
  */
-export function getMarketplaceUrl(nftType: string): string | null {
-  const collection = detectCollection(nftType);
-  return collection?.marketplaceUrl || null;
+export function getMarketplaceUrl(objectId: string): string {
+  return `https://suiscan.xyz/mainnet/object/${objectId}`;
 }

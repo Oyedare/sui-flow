@@ -1,12 +1,14 @@
 "use client";
 
 import { useNFTs } from "@/hooks/useNFTs";
+import { useNFTFloorPrices, getFloorPrice } from "@/hooks/useNFTFloorPrices";
 import { ExternalLink, Image as ImageIcon, TrendingUp } from "lucide-react";
 import { getCollectionName, getMarketplaceUrl } from "@/lib/nftCollections";
 import { useSettings } from "@/contexts/SettingsContext";
 
 export function NFTList() {
   const { data: nfts, isLoading } = useNFTs();
+  const { data: floorPrices } = useNFTFloorPrices(nfts || []);
   const { settings } = useSettings();
 
   const getAlphaColor = (hex: string, alpha: number) => {
@@ -43,6 +45,7 @@ export function NFTList() {
       {nfts.map((nft) => {
         const collectionName = getCollectionName(nft.type);
         const marketplaceUrl = getMarketplaceUrl(nft.objectId);
+        const floorPrice = getFloorPrice(floorPrices, nft.type);
         
         return (
           <div
@@ -87,8 +90,8 @@ export function NFTList() {
                     onMouseEnter={(e) => e.currentTarget.style.color = settings.accentColor}
                     onMouseLeave={(e) => e.currentTarget.style.color = ''}
                   >
-                    <TrendingUp size={12} />
-                    Market
+                    <ExternalLink size={12} />
+                    View
                   </a>
                 )}
               </div>
@@ -103,11 +106,17 @@ export function NFTList() {
                 </p>
               )}
 
-              {/* Floor Price Placeholder */}
+              {/* Floor Price */}
               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-zinc-800">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Floor Price</span>
-                  <span className="text-gray-400 dark:text-gray-500 italic">Coming soon</span>
+                  {floorPrice !== null ? (
+                     <span className="font-medium text-gray-900 dark:text-white">
+                       {floorPrice.toFixed(2)} SUI
+                     </span>
+                  ) : (
+                     <span className="text-gray-400 dark:text-gray-500 italic">--</span>
+                  )}
                 </div>
               </div>
             </div>

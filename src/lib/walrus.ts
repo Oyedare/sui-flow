@@ -133,12 +133,15 @@ export async function storeBlob(data: string | Blob, encrypt: boolean = true): P
     }
     
     const result = await response.json();
+    console.log("[Walrus] Raw Store Response:", JSON.stringify(result, null, 2));
     
     // Extract blob ID from response
     // Walrus returns: { "newlyCreated": { "blobObject": { "blobId": "..." } } } or { "alreadyCertified": { "blobId": "..." } }
     // NOTE: Use "blobId" (base64 string) NOT "id" (hex object ID)
     const blobId = result.newlyCreated?.blobObject?.blobId || 
                    result.alreadyCertified?.blobId;
+    
+    console.log("[Walrus] Extracted Blob ID:", blobId);
     
     if (!blobId) {
       console.error('Walrus response:', result);
@@ -158,7 +161,7 @@ export async function storeBlob(data: string | Blob, encrypt: boolean = true): P
 export async function readBlob(blobId: string, decrypt: boolean = true): Promise<string> {
   try {
     // Fetch from Walrus aggregator (blobId is base64 encoded, no prefix to strip)
-    const response = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`);
+    const response = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/blobs/${encodeURIComponent(blobId)}`);
     
     if (!response.ok) {
       throw new Error(`Walrus read failed (${response.status}): ${response.statusText}`);
