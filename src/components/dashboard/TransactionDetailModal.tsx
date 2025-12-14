@@ -143,9 +143,9 @@ export function TransactionDetailModal({ tx, onClose }: TransactionDetailModalPr
                    value={newLabel}
                    onChange={(e) => setNewLabel(e.target.value)}
                    placeholder="Add tag (e.g. #food)"
-                   className="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none border-transparent focus:border-[var(--accent)]"
+                   className="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 rounded-lg border border-gray-200 dark:border-zinc-700 focus:outline-none border-transparent focus:border-[var(--accent)]"
                  />
-                 <button type="submit" disabled={!newLabel.trim()} className="px-3 py-2 bg-gray-100 dark:bg-zinc-700 rounded-lg text-sm font-medium disabled:opacity-50">Add</button>
+                 <button type="submit" disabled={!newLabel.trim()} className="px-3 py-2 bg-gray-100 dark:bg-zinc-700 text-gray-900 dark:text-white rounded-lg text-sm font-medium disabled:opacity-50">Add</button>
              </form>
           </div>
 

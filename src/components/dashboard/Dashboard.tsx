@@ -174,12 +174,12 @@ export function Dashboard() {
              <NFTList />
            </div>
         )}
-        {activeTab === 'history' && (
-           <div className="animate-in fade-in duration-300">
+        {/* Pre-render History for instant load */}
+        <div className={clsx("animate-in fade-in duration-300", activeTab === 'history' ? "block" : "hidden")}>
              <h3 className="text-xl font-semibold dark:text-white px-2 mb-4">Recent Activity</h3>
              <HistoryList />
-           </div>
-        )}
+        </div>
+
         {activeTab === 'tax' && (
            <div className="animate-in fade-in duration-300">
              <h3 className="text-xl font-semibold dark:text-white px-2 mb-4">Tax & Reporting</h3>
