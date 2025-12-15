@@ -14,15 +14,18 @@ import { NFTList } from "./NFTList";
 import { Settings } from "./Settings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { formatCurrency } from "@/lib/currency";
-import { useCurrencyRates } from "@/hooks/useCurrencyRates";
 import clsx from "clsx";
+import { useCurrencyRates } from "@/hooks/useCurrencyRates";
 import { Eye, EyeOff } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useOnboarding } from "@/hooks/useOnboarding";
 
-type Tab = 'assets' | 'defi' | 'nfts' | 'history' | 'tax' | 'analytics' | 'settings';
+// ... (existing imports)
 
 export function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('assets');
+  const searchParams = useSearchParams();
+  const defaultTab = (searchParams.get('tab') as Tab) || 'assets';
+  const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
   const { balances, isLoading: isBalancesLoading } = useTokenBalances();
   const { settings, updateSettings } = useSettings();
   const { data: exchangeRates } = useCurrencyRates();
