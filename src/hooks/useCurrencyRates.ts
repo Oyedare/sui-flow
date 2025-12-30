@@ -5,9 +5,9 @@ import { Currency } from "@/contexts/SettingsContext";
 
 // Pyth price feed IDs for forex pairs
 const PRICE_FEED_IDS = {
-  EUR_USD: "a995cbf0a1737e6f85e4952011400e979d39c065f49e06180802c638e132c30b",
+  EUR_USD: "a995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b",
   GBP_USD: "84c2dde9633d93d1bcad84e7dc41c9d56578b7ec52fabedc1f335d673df0a7c1",
-  USD_JPY: "ef2c957e19672ac49d150f83c076592a0e698cd981d774d173367936a188fd52",
+  USD_JPY: "ef2c98c804ba503c6a707e38be4dfbb16683775f195b091252bf24693042fd52",
 };
 
 // Pyth Hermes API endpoint
