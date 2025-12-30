@@ -4,15 +4,17 @@ import { useTokenBalances } from "@/hooks/useTokenBalances";
 import { useTokenPrices } from "@/hooks/useTokenPrices";
 import { useTransactionHistory } from "@/hooks/useTransactionHistory";
 import { TaxEngine, TaxReport as TaxReportType } from "@/lib/taxEngine";
-import { Download, FileText, Shield, CloudDownload } from "lucide-react";
+import { fetchAllTransactionHistoryGraphQL } from "@/lib/sui-graphql";
+import { Download, FileText, CloudDownload, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { WalrusBackup } from "./WalrusBackup";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useQueryClient } from "@tanstack/react-query";
-import { nautilus, AttestationDoc } from "@/lib/nautilus";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export function TaxReport() {
   const { data: history, isLoading: isHistoryLoading } = useTransactionHistory();
+  const account = useCurrentAccount();
   const { balances } = useTokenBalances(); 
   const { settings } = useSettings();
   const queryClient = useQueryClient();
@@ -23,6 +25,7 @@ export function TaxReport() {
   const [report, setReport] = useState<TaxReportType | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState({ processed: 0, total: 0 });
+  const [statusMessage, setStatusMessage] = useState("");
   
   // Restore State
   const [restoreInput, setRestoreInput] = useState("");
@@ -56,31 +59,18 @@ export function TaxReport() {
     return TaxEngine.calculateNigeriaLiability(netGain, exchangeRate);
   }, [report, exchangeRate]);
 
-  const [verificationStage, setVerificationStage] = useState("");
-  const [enclaveSignature, setEnclaveSignature] = useState("");
-  const [attestation, setAttestation] = useState<AttestationDoc | null>(null);
+  /* Removed Nautilus State */
 
   const handleGenerate = async () => {
-    if (!history?.data) return;
+    if (!account?.address) return;
     
     setIsGenerating(true);
     setProgress({ processed: 0, total: 0 });
-    setEnclaveSignature("");
-    setAttestation(null);
+
 
     try {
       // 1. Connect
-      setVerificationStage("Connecting to AWS Nitro Enclave...");
-      const isOnline = await nautilus.checkHealth();
-      if (!isOnline) throw new Error("Enclave unreachable");
-      
-      // 2. Attest
-      setVerificationStage("Verifying Remote Attestation...");
-      const doc = await nautilus.getAttestation();
-      setAttestation(doc);
-      await nautilus.verifyAttestation(doc); // Throws if invalid
-      
-      setVerificationStage("Secure Enclave Established. Executing...");
+      /* Removed Nautilus Verification Steps */
       
       // Dynamic import to avoid SSR issues
       const { getHistoricalPrice: fetchHistoricalPrice } = await import("@/lib/pythBenchmarks");
@@ -98,37 +88,37 @@ export function TaxReport() {
          setProgress({ processed, total });
       };
       
-      // Actual Calculation
-      switch (settings.taxMethod) {
-        case "LIFO":
-          reportData = await TaxEngine.calculateLIFO(history.data as any[], priceFetcher, progressCallback);
-          break;
-        case "Average":
-          reportData = await TaxEngine.calculateAverage(history.data as any[], priceFetcher, progressCallback);
-          break;
-        case "FIFO":
-        default:
-          reportData = await TaxEngine.calculateFIFO(history.data as any[], priceFetcher, progressCallback);
-          break;
-      }
-      
-      // 3. Sign Results (Simulate sending data to Enclave for signing)
-      setVerificationStage("Signing Results with Enclave Key...");
-      const result = await nautilus.execute({ 
-          events: reportData.events.length, 
-          gain: reportData.totalRealizedGain,
-          hash: "sha256-placeholder" 
-      });
-      
-      setEnclaveSignature(result.signature || "");
+        // 0. Fetch Full History
+        setStatusMessage("Fetching Full Transaction History...");
+        const fullHistory = await fetchAllTransactionHistoryGraphQL(
+           account.address, 
+           settings.network,
+           (count) => setStatusMessage(`Fetched ${count} transactions...`)
+        );
+
+        setStatusMessage("Calculated Gains & Losses. Finalizing...");
+
+        // Actual Calculation
+        switch (settings.taxMethod) {
+          case "LIFO":
+            reportData = await TaxEngine.calculateLIFO(fullHistory, priceFetcher, progressCallback);
+            break;
+          case "Average":
+            reportData = await TaxEngine.calculateAverage(fullHistory, priceFetcher, progressCallback);
+            break;
+          case "FIFO":
+          default:
+            reportData = await TaxEngine.calculateFIFO(fullHistory, priceFetcher, progressCallback);
+            break;
+        }
       
       setReport(reportData);
     } catch (error: any) {
       console.error("Tax generation failed:", error);
-      alert(`Nautilus Error: ${error.message}`);
+      alert(`Error: ${error.message}`);
     } finally {
       setIsGenerating(false);
-      setVerificationStage("");
+      setStatusMessage("");
     }
   };
 
@@ -163,31 +153,7 @@ export function TaxReport() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       
-      {/* Privacy Badge - Nautilus TEE */}
-      <div 
-        className="flex items-center gap-3 p-4 rounded-xl border relative overflow-hidden"
-        style={{ 
-            backgroundColor: getAlphaColor(settings.accentColor, 0.05),
-            borderColor: getAlphaColor(settings.accentColor, 0.2)
-        }}
-      >
-        <div className="p-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm">
-             <Shield size={24} className="text-blue-500" />
-        </div>
-        <div>
-          <h3 className="font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
-              Secured by Nautilus TEE 
-              <span className="flex items-center gap-1 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
-                  <Shield size={10} /> VERIFIED ENCLAVE
-              </span>
-          </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Computations run inside a verifiable AWS Nitro Enclave. Proofs are published on-chain.
-          </p>
-        </div>
-        {/* Background Pattern */}
-        <div className="absolute right-0 top-0 h-full w-32 bg-gradient-to-l from-white/10 to-transparent pointer-events-none" />
-      </div>
+      {/* Removed Nautilus UI Badge */}
 
       {!report ? (
         <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-gray-200 dark:border-zinc-800 rounded-3xl bg-gray-50 dark:bg-zinc-900/50">
@@ -198,7 +164,7 @@ export function TaxReport() {
            </p>
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || isHistoryLoading}
+              disabled={isGenerating}
               className="px-6 py-3 text-white rounded-full font-medium transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 hover:opacity-90 min-w-[240px] justify-center"
               style={{ 
                   backgroundColor: settings.accentColor,
@@ -209,14 +175,14 @@ export function TaxReport() {
                   <>
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     <span className="flex flex-col items-start text-xs text-left">
-                        <span className="font-semibold">{verificationStage || "Processing..."}</span>
+                        <span className="font-semibold">{statusMessage || "Processing..."}</span>
                         {progress.total > 0 && <span className="opacity-80">Scanning tx {progress.processed}/{progress.total}</span>}
                     </span>
                   </>
               ) : (
                   <>
-                    <Shield size={18} />
-                    Generate with Nautilus
+                    <RefreshCw size={18} />
+                    Generate Tax Report
                   </>
               )}
             </button>
@@ -270,7 +236,7 @@ export function TaxReport() {
           <div className="p-6 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl space-y-4">
              <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                   🇳🇬 Nigeria Tax Liability Estimator <span className="text-xs bg-gray-100 dark:bg-zinc-800 text-gray-500 px-2 py-0.5 rounded-full font-normal">2025 Act</span>
+                   🇳🇬 Nigeria Tax Liability Estimator <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold border border-green-200 dark:border-green-800">Tax Act 2025 (Effective 2026)</span>
                 </h3>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-500">1 USD = ₦</span>
@@ -291,6 +257,7 @@ export function TaxReport() {
                    <div className="text-2xl font-bold text-gray-900 dark:text-white">
                      {liability?.effectiveRate.toFixed(1)}%
                    </div>
+                   <div className="text-[10px] text-gray-400 mt-1">Based on new PIT bands</div>
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl">
                    <div className="text-xs text-gray-500 mb-1">Estimated Tax (NGN)</div>
@@ -305,8 +272,9 @@ export function TaxReport() {
                    </div>
                 </div>
              </div>
-             <p className="text-xs text-gray-400">
-               *Estimates based on progressive bands: 0% (First ₦800k), then 15%, 18%, 21%, 23%, 25%. Consult a tax professional.
+             <p className="text-xs text-gray-400 flex flex-col gap-1">
+               <span>*Bands: 0% (First ₦800k), then 15%, 18%, 21%, 23%, 25%.</span>
+               <span className="text-green-600 dark:text-green-500 font-medium">✓ Digital Asset Loss Relief Applied (Ring-fenced). Gains are taxed as income.</span>
              </p>
           </div>
 

@@ -22,6 +22,8 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 
 // ... (existing imports)
 
+type Tab = 'assets' | 'defi' | 'nfts' | 'history' | 'tax' | 'analytics' | 'settings';
+
 export function Dashboard() {
   const searchParams = useSearchParams();
   const defaultTab = (searchParams.get('tab') as Tab) || 'assets';

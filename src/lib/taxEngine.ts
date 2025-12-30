@@ -62,9 +62,28 @@ export class TaxEngine {
       processedCount++;
       if (onProgress) onProgress(processedCount, totalCount);
 
+      const gasUsed = tx.effects?.gasUsed;
+      const totalGasSUI = gasUsed ? 
+        (Number(gasUsed.computationCost) + Number(gasUsed.storageCost) - Number(gasUsed.storageRebate)) / 1_000_000_000 : 0;
+      
+      // We need SUI price to value the gas in USD
+      // Optimization: Fetch SUI price once per tx timestamp if needed
+      // For now, we will track gas cost separately or just deduct it if the asset is SUI
+      
+      // To keep it simple for MVP:
+      // We will associate the gas cost (in USD) with the first valid balance change event in this tx
+      let gasHandled = false;
+
       if (!tx.balanceChanges) continue;
       const date = new Date(Number(tx.timestampMs)).toLocaleDateString();
       const timestamp = Number(tx.timestampMs);
+
+      // Pre-fetch SUI price for gas valuation
+      let suiPrice = 0;
+      if (totalGasSUI > 0) {
+          suiPrice = await priceProvider("0x2::sui::SUI", timestamp);
+      }
+      const gasCostUSD = totalGasSUI * suiPrice;
 
       for (const change of tx.balanceChanges) {
         const coinType = change.coinType;
@@ -76,19 +95,28 @@ export class TaxEngine {
         if (amount < 0.000001) continue;
 
         // FETCH PRICE
-        // We fetch price for this specific transaction time
         const price = await priceProvider(coinType, timestamp);
         
-        // Small delay to be nice to public API
-        await new Promise(r => setTimeout(r, 50)); 
+        await new Promise(r => setTimeout(r, 10)); // Reduced delay
+
+        // Attribute gas cost to the first event in the transaction
+        let eventGasCost = 0;
+        if (!gasHandled && gasCostUSD > 0) {
+            eventGasCost = gasCostUSD;
+            gasHandled = true;
+        }
 
         if (rawAmount > 0) {
           // BUY / RECEIVE
+          // Gas fees on a buy increase the Cost Basis
+          const totalCostBasis = (amount * price) + eventGasCost;
+          const costBasisPerUnit = totalCostBasis / amount;
+
           if (!inventory[coinType]) inventory[coinType] = [];
           
           inventory[coinType].push({
             amount: amount,
-            costBasisPerUnit: price
+            costBasisPerUnit: costBasisPerUnit
           });
 
           events.push({
@@ -97,11 +125,14 @@ export class TaxEngine {
             asset: coinType.split('::').pop() || 'UNK',
             amount,
             price,
-            totalValue: amount * price
+            totalValue: totalCostBasis // Total value includes gas cost
           });
 
         } else if (rawAmount < 0) {
           // SELL / SEND
+          // Gas fees on a sell reduce the Proceeds (or increase expense), effectively lowering Gain
+          // Realized PnL = (Proceeds - Gas) - CostBasis
+          
           let remainingToSell = amount;
           let realizedPnL = 0;
           let costBasisTotal = 0;
@@ -141,6 +172,9 @@ export class TaxEngine {
              costBasisTotal += cost; 
           }
 
+          // DEDUCT GAS from Realized PnL
+          realizedPnL -= eventGasCost;
+
           if (realizedPnL > 0) totalRealizedGain += realizedPnL;
           else totalRealizedLoss += Math.abs(realizedPnL);
 
@@ -150,7 +184,7 @@ export class TaxEngine {
             asset: coinType.split('::').pop() || 'UNK',
             amount: amount,
             price,
-            totalValue: amount * price,
+            totalValue: (amount * price) - eventGasCost, // Net Value
             costBasis: costBasisTotal,
             gainLoss: realizedPnL
           });
